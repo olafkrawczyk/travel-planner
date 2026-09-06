@@ -10,6 +10,7 @@ export {
   type MatrixEntry,
 } from "./matrix";
 export { giantTour } from "./giantTour";
+export { kMeans, type KMeansOptions } from "./kmeans";
 export { split, type SplitResult } from "./split";
 export { sequenceDay, computeTimes, type SequenceResult, type DayWindow } from "./sequence";
 export {

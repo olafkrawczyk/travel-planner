@@ -120,32 +120,19 @@ export function evaluate(problem: Problem, state: State): Evaluation {
     }
   }
   
-  let regionMixing = 0;
-  for (let d = 0; d < problem.dayList.length; d++) {
-    const stops = state.days[d]!;
-    if (stops.length === 0) continue;
-    
-    const regionCounts = new Map<string, number>();
-    let placesWithRegion = 0;
-    
-    for (const id of stops) {
-      const p = problem.placesById.get(id);
-      if (p && p.region) {
-        regionCounts.set(p.region, (regionCounts.get(p.region) ?? 0) + 1);
-        placesWithRegion++;
-      }
-    }
-    
-    if (regionCounts.size > 1) {
-      let maxCount = 0;
-      for (const count of regionCounts.values()) {
-        if (count > maxCount) maxCount = count;
-      }
-      regionMixing += (placesWithRegion - maxCount);
-    }
-  }
-
-  const w = problem.settings?.solverStrategy === "clusterFirst" 
+  // Region coherence under clusterFirst is enforced at the OPERATOR level
+  // (see `regionCompatible`, used by `insertPlace` and threaded through
+  // `recreate`/`relocateDay`/`swapDays`), not as an objective term. An
+  // earlier version of this function added an unconditional `regionMixing`
+  // term here weighted at `BIG_PENALTY` (1e9/mismatched place) — six orders
+  // of magnitude above `mustDropped` (1000/place) — which fired on every
+  // solve regardless of strategy and made ALNS prefer dropping hundreds of
+  // must-see places over accepting one region-mixed day. Blocking
+  // incompatible moves at the source costs nothing to apply consistently and
+  // needs no weight tuned against the rest of the objective, so the term was
+  // removed rather than reweighted — see design.md Decision 2.5 in the
+  // cluster-first-strategy change for the full rationale.
+  const w = problem.settings?.solverStrategy === "clusterFirst"
     ? { ...problem.weights, dayImbalance: 0 } // In clusterFirst, regions naturally dictate imbalance
     : problem.weights;
 
@@ -156,9 +143,8 @@ export function evaluate(problem: Problem, state: State): Evaluation {
     w.niceDropped * niceDropped +
     w.dayImbalance * imbalance +
     w.overBudget * overBudgetMin +
-    infeasibleDays * BIG_PENALTY +
-    regionMixing * BIG_PENALTY;
-  
+    infeasibleDays * BIG_PENALTY;
+
   return {
     objective,
     travelMin,
@@ -266,13 +252,45 @@ export function exitNode(problem: Problem, dayIdx: number): string {
 }
 
 /** Cheapest-feasible insertion of `placeId` across the given days; mutates state. */
+/**
+ * Whether `placeId` may join day `dayIdx` without introducing NEW
+ * cross-region mixing (clusterFirst region protection — see design.md
+ * Decision 2.5 in the cluster-first-strategy change). A place with no
+ * `region` is a free agent: it never blocks, and is never blocked. A day
+ * with no established region yet (empty, or every current occupant is
+ * unregioned) accepts anything. Otherwise the day already has one or more
+ * established regions (construction can tie-assign more than one cluster to
+ * a day, so "already mixed" is possible) and `placeId` may only join if its
+ * region is among them — this stops the operators from making mixing worse,
+ * but does not require them to *fix* mixing construction already produced.
+ */
+function regionCompatible(problem: Problem, state: State, dayIdx: number, placeId: string): boolean {
+  const region = problem.placesById.get(placeId)?.region;
+  if (!region) return true;
+  for (const id of state.days[dayIdx] ?? []) {
+    const r = problem.placesById.get(id)?.region;
+    if (r && r !== region) return false;
+  }
+  return true;
+}
+
+/**
+ * Cheapest-feasible insertion of `placeId` across the given day; mutates
+ * state. `respectRegions` (clusterFirst only — see `regionCompatible`)
+ * refuses the day outright when the place's region would newly mix with an
+ * already-established, different region there; callers that must never be
+ * blocked by region coherence (the final repair pass, explicit force-insert)
+ * leave it at the default `false`.
+ */
 export function insertPlace(
   problem: Problem,
   state: State,
   dayIdx: number,
   placeId: string,
   relaxBudget = false,
+  respectRegions = false,
 ): boolean {
+  if (respectRegions && !regionCompatible(problem, state, dayIdx, placeId)) return false;
   const list = state.days[dayIdx] ?? [];
   const day = problem.dayList[dayIdx]!;
   let bestPos = -1;
@@ -426,6 +444,10 @@ export function relocateDay(
   const donor = mostLoadedDay(problem, state, activeDays);
   if (!donor) return false;
   const worst = donor.dayIdx;
+  // clusterFirst-only: never relocate a place onto a day that would newly
+  // mix it with a different, already-established region there (see
+  // `regionCompatible`). routeFirst is unaffected (region stays inert).
+  const respectRegions = problem.settings?.solverStrategy === "clusterFirst";
   const candidates = (state.days[worst] ?? []).filter(
     (id) => !isProtected(problem, worst, id, pinnedToDay),
   );
@@ -439,7 +461,7 @@ export function relocateDay(
     for (const target of activeDays) {
       if (!candidateRecipient(problem, state, target, donor)) continue;
       const trial = cloneState(base);
-      if (!insertPlace(problem, trial, target, id)) continue;
+      if (!insertPlace(problem, trial, target, id, false, respectRegions)) continue;
       const obj = evaluate(problem, trial).objective;
       if (obj < bestObj - 1e-9) {
         bestObj = obj;
@@ -449,7 +471,7 @@ export function relocateDay(
   }
   if (!best) return false;
   state.days[worst] = (state.days[worst] ?? []).filter((x) => x !== best.id);
-  return insertPlace(problem, state, best.target, best.id);
+  return insertPlace(problem, state, best.target, best.id, false, respectRegions);
 }
 
 /**
@@ -470,6 +492,8 @@ export function swapDays(
   const donor = mostLoadedDay(problem, state, activeDays);
   if (!donor) return false;
   const worst = donor.dayIdx;
+  // clusterFirst-only: see `relocateDay`'s matching comment.
+  const respectRegions = problem.settings?.solverStrategy === "clusterFirst";
   const aCandidates = (state.days[worst] ?? []).filter(
     (id) => !isProtected(problem, worst, id, pinnedToDay),
   );
@@ -491,8 +515,8 @@ export function swapDays(
       const trial = cloneState(state);
       trial.days[worst] = (trial.days[worst] ?? []).filter((x) => x !== a);
       trial.days[bDay] = (trial.days[bDay] ?? []).filter((x) => x !== b);
-      if (!insertPlace(problem, trial, bDay, a)) continue;
-      if (!insertPlace(problem, trial, worst, b)) continue;
+      if (!insertPlace(problem, trial, bDay, a, false, respectRegions)) continue;
+      if (!insertPlace(problem, trial, worst, b, false, respectRegions)) continue;
       const obj = evaluate(problem, trial).objective;
       if (obj < baseObj - 1e-9 && (best === null || obj < best.obj)) {
         best = { a, b, bDay, obj };
@@ -502,7 +526,10 @@ export function swapDays(
   if (!best) return false;
   state.days[worst] = (state.days[worst] ?? []).filter((x) => x !== best.a);
   state.days[best.bDay] = (state.days[best.bDay] ?? []).filter((x) => x !== best.b);
-  return insertPlace(problem, state, best.bDay, best.a) && insertPlace(problem, state, worst, best.b);
+  return (
+    insertPlace(problem, state, best.bDay, best.a, false, respectRegions) &&
+    insertPlace(problem, state, worst, best.b, false, respectRegions)
+  );
 }
 
 /** Re-insert removed places (priority/appointment first) across active days. */
@@ -513,6 +540,11 @@ function recreate(
   activeDays: number[],
   pinnedToDay?: Map<string, number>,
 ): void {
+  // clusterFirst-only: see `relocateDay`'s matching comment. A place pinned
+  // to a specific day (an explicit drag) always bypasses the check for that
+  // day, same as `forceInsert` and `repairPass` — an explicit user placement
+  // outranks region coherence.
+  const clusterFirst = problem.settings?.solverStrategy === "clusterFirst";
   const sorted = [...toInsert].sort((a, b) => {
     const pa = problem.placesById.get(a);
     const pb = problem.placesById.get(b);
@@ -527,6 +559,7 @@ function recreate(
   for (const id of sorted) {
     const p = problem.placesById.get(id);
     const forcedDay = pinnedToDay?.get(id);
+    const respectRegions = clusterFirst && forcedDay === undefined;
     let inserted = false;
     for (const d of activeDays) {
       const day = problem.dayList[d]!;
@@ -534,7 +567,7 @@ function recreate(
       if (p?.appointment && p.appointment.dayId !== day.id) continue;
       // A force-inserted place stays on its forced day through ruin/recreate.
       if (p?.forceDayId && p.forceDayId !== day.id) continue;
-      if (insertPlace(problem, state, d, id)) {
+      if (insertPlace(problem, state, d, id, false, respectRegions)) {
         inserted = true;
         break;
       }

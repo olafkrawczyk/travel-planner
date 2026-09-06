@@ -17,6 +17,40 @@ const CATEGORIES: Category[] = [
   "other",
 ];
 
+/**
+ * Sorted, de-duplicated region names to offer in the "existing regions"
+ * picker (task 4.3): `existing` is every non-empty `Place.region` already
+ * present in the trip, `current` is folded in too so the place being edited
+ * never loses its own value from the list (e.g. a region nobody else has
+ * used yet). Matching an *existing* string exactly is what makes places
+ * group together in the solver (see `packages/solver/src/cluster.ts`), so a
+ * picker over what's already there beats a free-text box that's one typo
+ * away from silently creating a new, unshared region.
+ */
+export function collectRegionOptions(existing: readonly string[], current?: string): string[] {
+  const set = new Set(existing.filter((r) => r.length > 0));
+  if (current) set.add(current);
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Best-effort "does this look auto-assigned?" signal for the UI, purely
+ * cosmetic. `Place` carries no persisted provenance flag distinguishing an
+ * auto-derived region from a user-typed one, and adding one is out of scope
+ * here (would touch the domain schema and `clustering.ts`, which task 4.3
+ * doesn't own) — so this instead recognizes the exact naming convention
+ * `applyAutoCluster` uses for freshly-clustered districts ("District 1",
+ * "District 2", ...; see `apps/web/src/clustering.ts`). It degrades safely:
+ * editing the text at all makes it read as custom immediately, which is the
+ * right direction to be wrong in. The only false positive is a user
+ * deliberately naming their own region "District N" in that exact form —
+ * cosmetic only, since auto-clustering's real "already set?" check is just
+ * "does this place have a non-empty region", not this heuristic.
+ */
+export function isAutoRegionName(region: string): boolean {
+  return /^District \d+$/.test(region);
+}
+
 /** Place editor modal: create (from map click) or edit (task 7.4). */
 export function PlaceEditor() {
   const trip = useStore((s) => s.currentTrip);
@@ -30,12 +64,18 @@ export function PlaceEditor() {
   const isNew = !existing && editingPlaceId === "new" && pendingCoords !== null;
   if (!trip || (!existing && !isNew)) return null;
 
+  // Every region already in use anywhere in the trip, for the region picker
+  // below — computed here (not in PlaceEditorInner) so it reflects the
+  // whole trip, not just the place currently being edited.
+  const existingRegions = collectRegionOptions(trip.places.map((p) => p.region ?? ""));
+
   return (
     <PlaceEditorInner
       key={existing?.id ?? "new"}
       place={existing}
       coords={existing ? { lat: existing.lat, lng: existing.lng } : pendingCoords!}
       days={trip.days}
+      existingRegions={existingRegions}
       onClose={() => openPlaceEditor(null)}
       onSave={(p) => {
         const normalized = normalizePlace(p);
@@ -92,11 +132,12 @@ function PlaceEditorInner(props: {
   place?: Place;
   coords: { lat: number; lng: number };
   days: { id: string; date: string }[];
+  existingRegions: string[];
   onClose(): void;
   onSave(place: Place): void;
   onDelete?(): void;
 }) {
-  const { place, coords, days, onClose, onSave, onDelete } = props;
+  const { place, coords, days, existingRegions, onClose, onSave, onDelete } = props;
   const [name, setName] = useState(place?.name ?? "");
   const [category, setCategory] = useState<Category>(place?.category ?? "other");
   const [dwell, setDwell] = useState(place?.dwellMin ?? 60);
@@ -106,6 +147,12 @@ function PlaceEditorInner(props: {
   const [openingHours, setOpeningHours] = useState<Record<string, TimeWindow[]>>(place?.openingHours ?? {});
   const [newWindowDate, setNewWindowDate] = useState(days[0]?.date ?? "");
   const [region, setRegion] = useState(place?.region ?? "");
+  // Whether the region control is in "type a brand-new name" mode (picked
+  // "＋ New region…") rather than picking an existing one. See the Region
+  // field below for the auto-vs-manual legibility this whole block exists
+  // for (task 4.3).
+  const [addingRegion, setAddingRegion] = useState(false);
+  const regionOptions = collectRegionOptions(existingRegions, addingRegion ? undefined : region);
   const [notes, setNotes] = useState(place?.notes ?? "");
   const [lat, setLat] = useState(coords.lat);
   const [lng, setLng] = useState(coords.lng);
@@ -369,10 +416,83 @@ function PlaceEditorInner(props: {
             />
           </label>
         </div>
-        <label>
-          Region
-          <input value={region} onChange={(e) => setRegion(e.target.value)} placeholder="e.g. Shinjuku" />
-        </label>
+        {/* Visibility decision: keep this control visible under `routeFirst`
+            (nearly every user, since `solverStrategy` only lives in the
+            hidden DevPanel behind Ctrl/Cmd+Alt+D) rather than hiding it.
+            Region data a user enters under routeFirst is not lost or wasted
+            — it's exactly what clusterFirst reads the moment someone flips
+            the DevPanel switch — so hiding the field would make that data
+            invisible and effectively unrecoverable to set up in advance.
+            Instead the "only affects grouping under Cluster-first" hint
+            below (rendered whenever solverStrategy !== "clusterFirst")
+            explains why setting it appears to do nothing today, which is
+            what actually addresses the "control that does nothing" risk. */}
+        {!isHotel && (
+          <label>
+            Region
+            {addingRegion ? (
+              <div className="row">
+                <input
+                  value={region}
+                  onChange={(e) => setRegion(e.target.value)}
+                  placeholder="e.g. Shinjuku"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddingRegion(false);
+                    setRegion(place?.region ?? "");
+                  }}
+                >
+                  Choose existing
+                </button>
+              </div>
+            ) : (
+              <select
+                value={region}
+                onChange={(e) => {
+                  if (e.target.value === "__new__") {
+                    setAddingRegion(true);
+                    setRegion("");
+                  } else {
+                    setRegion(e.target.value);
+                  }
+                }}
+              >
+                <option value="">(none — auto-assign)</option>
+                {regionOptions.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+                <option value="__new__">＋ New region…</option>
+              </select>
+            )}
+            {region ? (
+              <span
+                className={"badge" + (isAutoRegionName(region) ? " badge-info" : "")}
+                title={
+                  isAutoRegionName(region)
+                    ? "Named by auto-clustering. Pick a different region, or clear it back to “(none)” so auto-clustering can redo it."
+                    : "Set manually — auto-clustering will never overwrite this."
+                }
+              >
+                {isAutoRegionName(region) ? "Auto-assigned" : "Custom"}
+              </span>
+            ) : (
+              <p className="hint" role="note">
+                Empty — the next Cluster-first solve will assign this to a district automatically.
+              </p>
+            )}
+            {flags.solverStrategy !== "clusterFirst" && (
+              <p className="hint" role="note">
+                Region only affects itinerary grouping when the Cluster-first solver strategy is
+                enabled (dev panel, Ctrl/Cmd+Alt+D) — with routeFirst it's kept but has no effect.
+              </p>
+            )}
+          </label>
+        )}
         <label>
           Notes
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />

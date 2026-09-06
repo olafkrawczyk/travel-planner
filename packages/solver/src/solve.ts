@@ -121,8 +121,20 @@ export function solve(opts: SolveOptions): Itinerary {
  *
  * When `dayIdxs` is given (incremental resolve), only those days are tried —
  * untouched days stay verbatim.
+ *
+ * clusterFirst region protection (see `alns.ts`'s `regionCompatible`) is
+ * bypassed here ONLY for must-priority places: the itinerary-solver spec
+ * guarantees a must-priority place is unscheduled only when no feasible slot
+ * exists anywhere, and region coherence is a quality preference that must
+ * yield to that correctness guarantee. A want/nice-priority place has no
+ * such guarantee — for those, this pass still respects region compatibility,
+ * so a leftover low-priority place from one district is not dumped onto an
+ * unrelated day's district just because it happens to fit in time; it stays
+ * pooled (reported unscheduled) instead, same as it would if no day had
+ * physical room for it.
  */
 export function repairPass(problem: Problem, state: State, dayIdxs?: Set<number>): void {
+  const clusterFirst = problem.settings?.solverStrategy === "clusterFirst";
   const sorted = state.pool
     .filter((id) => problem.placesById.has(id))
     .sort((a, b) => {
@@ -134,6 +146,7 @@ export function repairPass(problem: Problem, state: State, dayIdxs?: Set<number>
   const remaining: string[] = [];
   for (const id of sorted) {
     const p = problem.placesById.get(id)!;
+    const respectRegions = clusterFirst && p.priority !== 1;
     let inserted = false;
     for (let d = 0; d < problem.dayList.length; d++) {
       const day = problem.dayList[d]!;
@@ -141,7 +154,7 @@ export function repairPass(problem: Problem, state: State, dayIdxs?: Set<number>
       if (dayIdxs && !dayIdxs.has(d)) continue;
       if (p.appointment && p.appointment.dayId !== day.id) continue;
       if (p.forceDayId && p.forceDayId !== day.id) continue;
-      if (insertPlace(problem, state, d, id)) {
+      if (insertPlace(problem, state, d, id, false, respectRegions)) {
         inserted = true;
         break;
       }
