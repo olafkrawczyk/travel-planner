@@ -164,3 +164,61 @@ describe("sequenceDay", () => {
     expect(res.stops[0]).toMatchObject({ arrive: "09:00", depart: "10:00", waitMin: 0 });
   });
 });
+
+/**
+ * Regression test for the weights.travel omission (`insertionDelta` in this
+ * file, and its sibling `insertPlace` in alns.ts — see alns.test.ts's
+ * matching test): both used to rank candidate insertion positions by
+ * `travelMin + weights.wait * waitMin`, silently treating weights.travel as
+ * always 1 even though `evaluate()`'s acceptance criterion weights it as
+ * `w.travel * travelMin + ...`. A trip with weights.travel != 1 could
+ * therefore have its construction/local-search phase optimise a DIFFERENT
+ * function than the one ALNS judges acceptance against.
+ *
+ * Scenario: B has an appointment at 11:00 (dwell 5); C is a free place.
+ * Visiting C before B ("C","B") costs more travel (65) but less wait (70,
+ * since the detour delays arrival closer to the appointment); visiting C
+ * after B ("B","C") costs less travel (21) but more wait (119, since B is
+ * reached quickly and then waits out the appointment). At the default
+ * weights.travel=1, the extra 44 min of travel outweighs the 49 min of wait
+ * saved, so "B","C" is cheaper. At weights.travel=0.3, the same travel
+ * difference is worth only 13.2 (0.3*44) against the wait saving of 24.5
+ * (0.5*49) — "C","B" flips to cheaper. Both orders are equally feasible, so
+ * this isolates the weighting bug rather than a feasibility difference.
+ */
+describe("weights.travel is threaded through insertion cost (not silently treated as 1)", () => {
+  function tradeoffProblem(weightsTravel: number) {
+    const t = trip({
+      places: [
+        place({ id: "base", lat: 0, lng: 0, category: "hotel", dwellMin: 0 }),
+        place({ id: "B", lat: 0, lng: 0.001, dwellMin: 5, appointment: { dayId: "d1", start: "11:00" } }),
+        place({ id: "C", lat: 0, lng: 0.002, dwellMin: 5 }),
+      ],
+      days: [day({ id: "d1", baseStartId: "base", baseEndId: "base" })],
+      travelOverrides: [
+        { fromId: "base", toId: "C", minutes: 30, symmetric: false },
+        { fromId: "C", toId: "base", minutes: 5, symmetric: false },
+        { fromId: "base", toId: "B", minutes: 1, symmetric: false },
+        { fromId: "B", toId: "base", minutes: 20, symmetric: false },
+        { fromId: "C", toId: "B", minutes: 15, symmetric: true },
+      ],
+    });
+    t.settings.weights = {
+      travel: weightsTravel,
+      wait: 0.5,
+      mustDropped: 1000,
+      niceDropped: 10,
+      dayImbalance: 1,
+      overBudget: 3,
+    };
+    return buildProblem(t);
+  }
+
+  it("prefers the higher-travel/lower-wait order at a low travel weight, and the lower-travel/higher-wait order at the default weight", () => {
+    const low = sequenceDay(tradeoffProblem(0.3), tradeoffProblem(0.3).dayList[0]!, ["B", "C"]);
+    expect(low.order).toEqual(["C", "B"]);
+
+    const normal = sequenceDay(tradeoffProblem(1), tradeoffProblem(1).dayList[0]!, ["B", "C"]);
+    expect(normal.order).toEqual(["B", "C"]);
+  });
+});

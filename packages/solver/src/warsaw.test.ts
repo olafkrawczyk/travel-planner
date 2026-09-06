@@ -51,10 +51,24 @@ import { WARSAW_PLACE_COUNT, warsawTrip } from "./fixtures/warsaw";
  * entirely from the smaller imbalance term (better-balanced days deviate
  * less from the mean); unscheduled count is unchanged at 0 and no day is
  * overbooked.
+ *
+ * Re-recorded for the rotation-search perf fix (see tokyo.test.ts's matching
+ * note for the full mechanism: `solve.ts`'s O(N)-rotation `split()` search
+ * replaced by a constant `ROTATION_CANDIDATES` (8) longest-edge cut
+ * selection). Here the DP cost of the chosen split (2015) is IDENTICAL to
+ * the old exhaustive search's best — but it's a tie: the old search settled
+ * it at rotation index 4, the new candidate-subset search at a different,
+ * equally-optimal rotation index 21 (both forward, neither reversed), so the
+ * actual day segments handed to ALNS differ even though their DP cost does
+ * not. That different (but equally good, by the DP's own metric) starting
+ * point sends ALNS's fixed 1000-iteration seeded random walk down a
+ * different path, landing in a better final local optimum for this seed:
+ * score 531.7 -> 477.2, travel 408 -> 405.4 (both improved). Unscheduled
+ * count is unchanged at 0 and no day is overbooked.
  */
 const BASELINES = {
-  score: 531.7,
-  totalTravelMin: 408,
+  score: 477.2,
+  totalTravelMin: 405.4,
   unscheduledCount: 0,
 };
 

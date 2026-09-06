@@ -180,7 +180,7 @@ function insertionDelta(
   const trial = [...order.slice(0, pos), placeId, ...order.slice(pos)];
   const times = computeTimes(problem, day, trial);
   if (!times.feasible) return null;
-  return times.travelMin + problem.weights.wait * times.waitMin;
+  return problem.weights.travel * times.travelMin + problem.weights.wait * times.waitMin;
 }
 
 /** Relative order of pinned ids inside `order` (for pin-preservation checks). */
@@ -268,7 +268,7 @@ export function sequenceDay(
   // Improvement: Or-opt (relocate 1-3 place segments) + 2-opt (reverse),
   // accepted only when feasible, pin-preserving and cheaper.
   const baseTimes = computeTimes(problem, day, order);
-  let bestCost = baseTimes.travelMin + problem.weights.wait * baseTimes.waitMin;
+  let bestCost = problem.weights.travel * baseTimes.travelMin + problem.weights.wait * baseTimes.waitMin;
 
   let improved = true;
   let guard = 0;
@@ -284,7 +284,7 @@ export function sequenceDay(
           if (pinnedSignature(trial, pinnedSet).join("|") !== pinnedSignature(order, pinnedSet).join("|")) continue;
           const times = computeTimes(problem, day, trial);
           if (!times.feasible) continue;
-          const cost = times.travelMin + problem.weights.wait * times.waitMin;
+          const cost = problem.weights.travel * times.travelMin + problem.weights.wait * times.waitMin;
           if (cost < bestCost - 1e-9) {
             bestCost = cost;
             order = trial;
@@ -304,7 +304,7 @@ export function sequenceDay(
         if (pinnedSignature(trial, pinnedSet).join("|") !== pinnedSignature(order, pinnedSet).join("|")) continue;
         const times = computeTimes(problem, day, trial);
         if (!times.feasible) continue;
-        const cost = times.travelMin + problem.weights.wait * times.waitMin;
+        const cost = problem.weights.travel * times.travelMin + problem.weights.wait * times.waitMin;
         if (cost < bestCost - 1e-9) {
           bestCost = cost;
           order = trial;

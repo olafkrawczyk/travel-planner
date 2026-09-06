@@ -97,7 +97,6 @@ describe("OsrmClient.fetchTable", () => {
     ["missing durations", {}],
     ["wrong row count", { durations: [[0, 1]] }],
     ["wrong row length", { durations: [[0, 1], [2]] }],
-    ["null entry", { durations: [[0, null], [1, 0]] }],
     ["non-numeric entry", { durations: [[0, "x"], [1, 0]] }],
   ])("throws a typed malformed error for %s", async (_name, body) => {
     const fetchFn = vi.fn().mockImplementation(() => jsonResponse(body));
@@ -110,6 +109,33 @@ describe("OsrmClient.fetchTable", () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(OsrmError);
     expect((err as OsrmError).kind).toBe("malformed");
+  });
+
+  it("treats a null cell as 'no data for this pair' (NaN) instead of discarding the whole matrix", async () => {
+    // OSRM legitimately returns null for a genuinely unroutable pair
+    // (islands, ferries, unsnapped points) — this must not throw, and must
+    // not poison the OTHER, perfectly good cells in the same response.
+    const fetchFn = vi.fn().mockImplementation(() =>
+      jsonResponse({
+        durations: [
+          [0, null, 120],
+          [null, 0, 60],
+          [120, 60, 0],
+        ],
+      }),
+    );
+    const client = new OsrmClient({ fetchFn });
+    const result = await client.fetchTable([
+      { lat: 0, lng: 0 },
+      { lat: 0, lng: 1 },
+      { lat: 0, lng: 2 },
+    ]);
+    expect(Number.isNaN(result[0]![1])).toBe(true);
+    expect(Number.isNaN(result[1]![0])).toBe(true);
+    // Every other cell still parses normally.
+    expect(result[0]![2]).toBe(2);
+    expect(result[1]![2]).toBe(1);
+    expect(result[2]![0]).toBe(2);
   });
 
   it("throws a typed oversize error before fetching when the node count exceeds the limit", async () => {

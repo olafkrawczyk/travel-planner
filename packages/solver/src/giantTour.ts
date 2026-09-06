@@ -52,16 +52,38 @@ export function giantTour(problem: Problem, placeIds?: string[]): string[] {
         }
       }
     }
-    // Or-opt: relocate segments of 1..3
+    // Or-opt: relocate segments of 1..3. Each trial's cost change is computed
+    // as an O(1) edge delta (only the <=3 edges touched by removing the
+    // segment and re-splicing it in change) instead of rebuilding the array
+    // and calling `tourCost` (O(n)) on it — that recompute made this loop
+    // O(n) trials x O(n) per trial = O(n^2) per (i, len), times O(n) values
+    // of i, i.e. O(n^3) per guard pass, which measured as the dominant cost
+    // of `giantTour` (~2s of a ~2.85s total at N=100 — see the perf-defect
+    // writeup this fixes; `perf.test.ts`/`giantTour.test.ts` cover the
+    // regression). The delta below is mathematically identical to
+    // `tourCost(trial) - tourCost(tour)` (same edges, same arithmetic, just
+    // without re-summing the O(n) unaffected edges), so the accept/reject
+    // decision — and therefore the tour this converges to — is unchanged;
+    // the full trial array is only ever built once an improving move is
+    // actually found and applied, not for every candidate.
     outer: for (let i = 0; i < n; i++) {
       for (let len = 1; len <= 3 && i + len <= n; len++) {
-        const seg = tour.slice(i, i + len);
+        const segFirst = tour[i]!;
+        const segLast = tour[i + len - 1]!;
+        const prev = tour[(i - 1 + n) % n]!;
+        const next = tour[(i + len) % n]!;
+        // Cost of closing the gap left by removing [i, i+len) from the cycle.
+        const removeDelta = cost(prev, next) - cost(prev, segFirst) - cost(segLast, next);
         const without = [...tour.slice(0, i), ...tour.slice(i + len)];
-        for (let pos = 0; pos <= without.length; pos++) {
+        const m = without.length;
+        for (let pos = 0; pos <= m; pos++) {
           if (pos === i) continue;
-          const trial = [...without.slice(0, pos), ...seg, ...without.slice(pos)];
-          if (tourCost(trial, cost) < tourCost(tour, cost) - 1e-9) {
-            tour = trial;
+          const before = without[(pos - 1 + m) % m]!;
+          const after = without[pos % m]!;
+          const insertDelta = cost(before, segFirst) + cost(segLast, after) - cost(before, after);
+          if (removeDelta + insertDelta < -1e-9) {
+            const seg = tour.slice(i, i + len);
+            tour = [...without.slice(0, pos), ...seg, ...without.slice(pos)];
             improved = true;
             break outer;
           }

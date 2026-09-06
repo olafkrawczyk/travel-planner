@@ -56,10 +56,27 @@ import { TOKYO_PLACE_COUNT, tokyoTrip } from "./fixtures/tokyo";
  * offsets the travel increase); unscheduled count is unchanged at 0 (the
  * Ghibli appointment is still reached, see the test below) and no day is
  * overbooked.
+ *
+ * Re-recorded for the rotation-search perf fix (`solve.ts`'s `split()` call
+ * dropped from O(N) tour rotations to a constant `ROTATION_CANDIDATES` (8)
+ * candidates opening the giant tour's cycle at its longest edges — see
+ * `bestRotationSplit`'s doc for why that's the principled replacement, not
+ * just a faster approximation). The chosen split's own DP cost is very
+ * slightly worse than the old exhaustive search's (3297.7 vs. 3282.9, a
+ * ~0.4% difference — the longest-edge heuristic didn't happen to land on
+ * the single best of the N candidates here, though it did for the Warsaw
+ * fixture below, see that file's matching note). Despite that, the final
+ * post-ALNS score IMPROVED, 950.5 -> 884, and travel improved too,
+ * 856.2 -> 838.3: a marginally different initial split hands ALNS's fixed
+ * 1000-iteration seeded random walk a different starting point, and for
+ * this seed that walk lands in a better local optimum, not a worse one —
+ * checked across seeds 1-5 too (all land 859-887, all still 0 unscheduled),
+ * so this is not a seed-42-specific fluke. Unscheduled count is unchanged
+ * at 0 and no day is over budget (both re-verified below).
  */
 const BASELINES = {
-  score: 950.5,
-  totalTravelMin: 856.2,
+  score: 884,
+  totalTravelMin: 838.3,
   unscheduledCount: 0,
 };
 

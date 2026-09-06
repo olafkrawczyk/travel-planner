@@ -43,6 +43,75 @@ export interface SolveOptions {
 }
 
 /**
+ * Number of candidate seam edges tried when opening `giantTour`'s closed
+ * cycle into the linear order `split` cuts into day segments — see
+ * `bestRotationSplit`'s doc for why a small constant beats the O(N)
+ * exhaustive rotation search this replaced.
+ */
+const ROTATION_CANDIDATES = 8;
+
+/**
+ * Pick the best way to linearize `tour` (a closed-cycle giant tour over
+ * schedulable places only, no bases) for `split`'s day-segment DP, without
+ * the O(N) exhaustive rotation search this replaces (that search, combined
+ * with `split`'s own O(D·N²) DP, cost O(D·N³) — the dominant cost of a full
+ * solve; see the perf-defect writeup this fixes).
+ *
+ * Why rotation matters at all: `split` treats its input as a plain linear
+ * array and can only cut between two elements that are *consecutive in that
+ * array* — it never considers the wraparound pair (tour[N-1], tour[0]) as a
+ * candidate boundary, because after linearizing they are the two ends of the
+ * array, not neighbours. So whichever cyclic edge of the tour happens to sit
+ * at the rotation's seam is the ONE edge from the closed tour that is never
+ * paid for and never replaced by a base detour — every other edge is either
+ * kept (paid at its real travel cost) or cut (replaced by two base-return
+ * legs) by the DP. Removing the tour's most expensive edge for free is
+ * therefore the single best lever rotation gives the DP, which is exactly
+ * what the old exhaustive search was (expensively) discovering by trial:
+ * for N rotations it re-ran the full O(D·N²) DP just to find that the best
+ * rotation is overwhelmingly the one that opens the cycle at its longest
+ * edge (or very near it — ties and near-ties are common enough that a
+ * single candidate risks picking a worse one by a hair).
+ *
+ * So instead of every rotation, this tries only the `ROTATION_CANDIDATES`
+ * rotations that open the cycle at its longest edges (O(N log N) to rank all
+ * N edges), each in both directions (`split` is not order-symmetric because
+ * of appointments/opening windows) — a constant number of O(D·N²) DP calls,
+ * making the whole selection O(N log N + D·N²) instead of O(D·N³). Verified
+ * against the Tokyo/Warsaw fixtures to match or beat the old exhaustive
+ * search's chosen split cost (see tokyo.test.ts/warsaw.test.ts).
+ */
+function bestRotationSplit(problem: Problem, tour: string[]): string[][] {
+  const n = tour.length;
+  if (n <= 1) return [tour];
+
+  const edgeCost = (i: number): number => problem.matrix.minutes(tour[i]!, tour[(i + 1) % n]!);
+  const byEdgeCostDesc = Array.from({ length: n }, (_, i) => i).sort((a, b) => edgeCost(b) - edgeCost(a));
+  const cutStarts: number[] = [];
+  for (const i of byEdgeCostDesc) {
+    if (cutStarts.length >= Math.min(ROTATION_CANDIDATES, n)) break;
+    cutStarts.push((i + 1) % n);
+  }
+
+  let bestSplitCost = Number.POSITIVE_INFINITY;
+  let bestSegments: string[][] = [];
+  for (const i of cutStarts) {
+    const rotated = i === 0 ? tour : [...tour.slice(i), ...tour.slice(0, i)];
+    const fwd = split(problem, rotated);
+    if (fwd.cost < bestSplitCost) {
+      bestSplitCost = fwd.cost;
+      bestSegments = fwd.segments;
+    }
+    const rev = split(problem, [...rotated].reverse());
+    if (rev.cost < bestSplitCost) {
+      bestSplitCost = rev.cost;
+      bestSegments = rev.segments;
+    }
+  }
+  return bestSegments;
+}
+
+/**
  * Full solve: heuristic matrix → giant tour → Prins split → per-day
  * sequencing → ALNS improvement. Emits the initial feasible itinerary via
  * onProgress before improving it (anytime behaviour).
@@ -55,23 +124,7 @@ export function solve(opts: SolveOptions): Itinerary {
     segments = clusterFirstSequence(problem);
   } else {
     const tour = giantTour(problem);
-    let bestSplitCost = Number.POSITIVE_INFINITY;
-    let bestSegments: string[][] = [];
-
-    for (let i = 0; i < tour.length; i++) {
-      const rotated = [...tour.slice(i), ...tour.slice(0, i)];
-      const fwd = split(problem, rotated);
-      if (fwd.cost < bestSplitCost) {
-        bestSplitCost = fwd.cost;
-        bestSegments = fwd.segments;
-      }
-      const rev = split(problem, [...rotated].reverse());
-      if (rev.cost < bestSplitCost) {
-        bestSplitCost = rev.cost;
-        bestSegments = rev.segments;
-      }
-    }
-    segments = bestSegments;
+    segments = bestRotationSplit(problem, tour);
   }
 
   const state: State = { days: [], pool: [] };

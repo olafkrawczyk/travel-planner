@@ -60,7 +60,79 @@ function dayUtilisation(problem: Problem, dayIdx: number, order: string[]): numb
   return utilisationOf(parseHHMM(day.start), parseHHMM(day.end), times.endMin);
 }
 
-export function evaluate(problem: Problem, state: State): Evaluation {
+/**
+ * Per-day contribution to `evaluate`'s objective, cheap to cache: everything
+ * `evaluate` needs from one day's `computeTimes` call. See `EvalCache` for
+ * why this is split out — a day whose order is untouched for the lifetime of
+ * an `alns` run never needs this recomputed.
+ */
+interface DayStat {
+  travelMin: number;
+  waitMin: number;
+  overBudgetMin: number;
+  infeasible: boolean;
+  /** null when the day is hard-infeasible (endMin is +Infinity) — see `evaluate`'s matching comment. */
+  util: number | null;
+  window: number;
+}
+
+function computeDayStat(problem: Problem, dayIdx: number, order: string[]): DayStat {
+  const day = problem.dayList[dayIdx]!;
+  const times = computeTimes(problem, day, order);
+  // Force-relaxed days opted into ending past `day.end` — exempt from the
+  // over-budget penalty (same detection as `computeTimes`).
+  const forceRelaxed = order.some((id) => problem.placesById.get(id)?.forceDayId === day.id);
+  const dayStart = parseHHMM(day.start);
+  const dayEnd = parseHHMM(day.end);
+  const overBudgetMin =
+    !forceRelaxed && Number.isFinite(times.endMin) ? Math.max(0, times.endMin - dayEnd) : 0;
+  // An infeasible day's endMin is +Infinity (sequence.ts); excluding it here
+  // keeps the imbalance term finite so BIG_PENALTY alone (below) grades
+  // infeasibility — one infinite endMin must not make every infeasible
+  // state compare equal, nor poison the objective into Infinity/NaN (which
+  // would silently disable simulated annealing in `alns` below).
+  const util = Number.isFinite(times.endMin) ? utilisationOf(dayStart, dayEnd, times.endMin) : null;
+  return {
+    travelMin: times.travelMin,
+    waitMin: times.waitMin,
+    overBudgetMin,
+    infeasible: !times.feasible,
+    util,
+    window: Math.max(1, dayEnd - dayStart),
+  };
+}
+
+/**
+ * Cache of `DayStat`s for days that are guaranteed not to change for the
+ * lifetime of one `alns` run: everything outside that run's `activeDays`.
+ * `ruin`/`recreate`/`relocateDay`/`swapDays` only ever mutate `state.days[d]`
+ * for `d` in `activeDays` (locked days and days excluded from an incremental
+ * resolve's blast radius are never touched) — so those days' `computeTimes`
+ * result is invariant across every iteration of the run, and recomputing it
+ * on every `evaluate` call (this cache's whole reason to exist) was pure
+ * waste: an `evaluate` call inside `relocateDay`/`swapDays`'s nested
+ * candidate loops recomputed EVERY day, including untouched ones, so one
+ * balance-operator attempt cost O(n²·D) full-objective evaluations — see the
+ * perf-defect writeup this fixes. `evaluate`'s own default behaviour
+ * (`cache` omitted) is unchanged: a fresh `DayStat` for every day, so every
+ * existing caller that evaluates a one-off state (tests, `finalize`) is
+ * unaffected.
+ */
+export interface EvalCache {
+  readonly staticStats: ReadonlyMap<number, DayStat>;
+}
+
+/** Build an `EvalCache` for an `alns` run over `activeDays` — see `EvalCache`'s doc. */
+export function buildEvalCache(problem: Problem, state: State, activeDays: readonly number[]): EvalCache {
+  const activeSet = new Set(activeDays);
+  const staticStats = new Map<number, DayStat>();
+  for (let d = 0; d < problem.dayList.length; d++) {
+    if (!activeSet.has(d)) staticStats.set(d, computeDayStat(problem, d, state.days[d] ?? []));
+  }
+  return { staticStats };
+}
+
+export function evaluate(problem: Problem, state: State, cache?: EvalCache): Evaluation {
   let travelMin = 0;
   let waitMin = 0;
   let infeasibleDays = 0;
@@ -68,33 +140,14 @@ export function evaluate(problem: Problem, state: State): Evaluation {
   // Locked days are included here (they are part of the trip the user sees)
   // even though the balance *operators* below (`mostLoadedDay`,
   // `candidateRecipient`) skip them entirely — see those functions' docs.
-  const dayStats: { util: number; window: number }[] = new Array(problem.dayList.length);
+  const dayStats: (DayStat | undefined)[] = new Array(problem.dayList.length);
   for (let d = 0; d < problem.dayList.length; d++) {
-    const day = problem.dayList[d]!;
-    const order = state.days[d] ?? [];
-    const times = computeTimes(problem, day, order);
-    travelMin += times.travelMin;
-    waitMin += times.waitMin;
-    if (!times.feasible) infeasibleDays++;
-    // Force-relaxed days opted into ending past `day.end` — exempt from the
-    // over-budget penalty (same detection as `computeTimes`).
-    const forceRelaxed = order.some((id) => problem.placesById.get(id)?.forceDayId === day.id);
-    if (!forceRelaxed && Number.isFinite(times.endMin)) {
-      overBudgetMin += Math.max(0, times.endMin - parseHHMM(day.end));
-    }
-    // An infeasible day's endMin is +Infinity (sequence.ts); excluding it here
-    // keeps the imbalance term finite so BIG_PENALTY alone (below) grades
-    // infeasibility — one infinite endMin must not make every infeasible
-    // state compare equal, nor poison the objective into Infinity/NaN (which
-    // would silently disable simulated annealing in `alns` below).
-    if (Number.isFinite(times.endMin)) {
-      const dayStart = parseHHMM(day.start);
-      const dayEnd = parseHHMM(day.end);
-      dayStats[d] = {
-        util: utilisationOf(dayStart, dayEnd, times.endMin),
-        window: Math.max(1, dayEnd - dayStart),
-      };
-    }
+    const stat = cache?.staticStats.get(d) ?? computeDayStat(problem, d, state.days[d] ?? []);
+    dayStats[d] = stat.util !== null ? stat : undefined;
+    travelMin += stat.travelMin;
+    waitMin += stat.waitMin;
+    if (stat.infeasible) infeasibleDays++;
+    overBudgetMin += stat.overBudgetMin;
   }
   let mustDropped = 0;
   let niceDropped = 0;
@@ -157,8 +210,25 @@ export function evaluate(problem: Problem, state: State): Evaluation {
   };
 }
 
-export function cloneState(s: State): State {
-  return { days: s.days.map((d) => [...d]), pool: [...s.pool] };
+/**
+ * Clone `s`. With `activeDays` given, only those days' arrays are copied —
+ * every other day is shared by reference with the source state. That is
+ * only safe because a day outside `activeDays` is, by construction, never
+ * mutated for the lifetime of one `alns` run (see `EvalCache`'s doc for the
+ * same invariant on the evaluation side) — every mutator here (`ruin`,
+ * `recreate`, `relocateDay`, `swapDays`) restricts itself to `activeDays`.
+ * Without `activeDays` (the default — every existing caller outside the
+ * `alns` hot loop), behaviour is unchanged: a full deep copy.
+ */
+export function cloneState(s: State, activeDays?: readonly number[]): State {
+  if (!activeDays) {
+    return { days: s.days.map((d) => [...d]), pool: [...s.pool] };
+  }
+  const activeSet = new Set(activeDays);
+  return {
+    days: s.days.map((d, i) => (activeSet.has(i) ? [...d] : d)),
+    pool: [...s.pool],
+  };
 }
 
 /**
@@ -299,7 +369,7 @@ export function insertPlace(
     const trial = [...list.slice(0, pos), placeId, ...list.slice(pos)];
     const times = computeTimes(problem, day, trial, relaxBudget);
     if (!times.feasible) continue;
-    const cost = times.travelMin + problem.weights.wait * times.waitMin;
+    const cost = problem.weights.travel * times.travelMin + problem.weights.wait * times.waitMin;
     if (cost < bestCost) {
       bestCost = cost;
       bestPos = pos;
@@ -440,6 +510,7 @@ export function relocateDay(
   rng: Rng,
   activeDays: number[],
   pinnedToDay?: Map<string, number>,
+  cache?: EvalCache,
 ): boolean {
   const donor = mostLoadedDay(problem, state, activeDays);
   if (!donor) return false;
@@ -453,16 +524,16 @@ export function relocateDay(
   );
   if (candidates.length === 0) return false;
   shuffle(rng, candidates);
-  let bestObj = evaluate(problem, state).objective;
+  let bestObj = evaluate(problem, state, cache).objective;
   let best: { id: string; target: number } | null = null;
   for (const id of candidates) {
-    const base = cloneState(state);
+    const base = cloneState(state, activeDays);
     base.days[worst] = (base.days[worst] ?? []).filter((x) => x !== id);
     for (const target of activeDays) {
       if (!candidateRecipient(problem, state, target, donor)) continue;
-      const trial = cloneState(base);
+      const trial = cloneState(base, activeDays);
       if (!insertPlace(problem, trial, target, id, false, respectRegions)) continue;
-      const obj = evaluate(problem, trial).objective;
+      const obj = evaluate(problem, trial, cache).objective;
       if (obj < bestObj - 1e-9) {
         bestObj = obj;
         best = { id, target };
@@ -488,6 +559,7 @@ export function swapDays(
   rng: Rng,
   activeDays: number[],
   pinnedToDay?: Map<string, number>,
+  cache?: EvalCache,
 ): boolean {
   const donor = mostLoadedDay(problem, state, activeDays);
   if (!donor) return false;
@@ -508,16 +580,16 @@ export function swapDays(
   if (bCandidates.length === 0) return false;
   shuffle(rng, aCandidates);
   shuffle(rng, bCandidates);
-  const baseObj = evaluate(problem, state).objective;
+  const baseObj = evaluate(problem, state, cache).objective;
   let best: { a: string; b: string; bDay: number; obj: number } | null = null;
   for (const a of aCandidates) {
     for (const { id: b, day: bDay } of bCandidates) {
-      const trial = cloneState(state);
+      const trial = cloneState(state, activeDays);
       trial.days[worst] = (trial.days[worst] ?? []).filter((x) => x !== a);
       trial.days[bDay] = (trial.days[bDay] ?? []).filter((x) => x !== b);
       if (!insertPlace(problem, trial, bDay, a, false, respectRegions)) continue;
       if (!insertPlace(problem, trial, worst, b, false, respectRegions)) continue;
-      const obj = evaluate(problem, trial).objective;
+      const obj = evaluate(problem, trial, cache).objective;
       if (obj < baseObj - 1e-9 && (best === null || obj < best.obj)) {
         best = { a, b, bDay, obj };
       }
@@ -658,7 +730,14 @@ function balanceAttemptProbability(spread: number): number {
 
 export interface AlnsOptions {
   seed: number;
-  /** Wall-clock budget in ms; combined with maxIterations (whichever binds). */
+  /**
+   * Wall-clock budget in ms. Deterministically converted to an iteration
+   * cap up front (see `calibratedIterationCap`) — NOT a live `Date.now()`
+   * check inside the search loop, which is what made "deterministic seeded
+   * runs" false at the budgets this app actually ships (see the
+   * determinism-defect writeup this fixes). Combined with `maxIterations`
+   * (whichever is smaller binds).
+   */
   budgetMs?: number;
   /** Iteration cap (determinism bound). Default 1000. */
   maxIterations?: number;
@@ -674,22 +753,147 @@ export interface AlnsResult {
 }
 
 /**
+ * Places across `activeDays` plus the unscheduled pool — the working set
+ * `ruin`/`recreate`/`evaluate` actually touch each iteration. Used only to
+ * size `calibratedIterationCap`'s conservative per-iteration cost estimate.
+ */
+function activeWorkSize(state: State, activeDays: readonly number[]): number {
+  let n = state.pool.length;
+  for (const d of activeDays) n += (state.days[d] ?? []).length;
+  return n;
+}
+
+/**
+ * Conservative (deliberately generous) estimate of one `alns` iteration's
+ * cost, in ms, on ordinary hardware — benchmarked against `perf.test.ts`
+ * post the `EvalCache`/scoped-`cloneState` fix above (the cost this formula
+ * models is exactly what that fix reduced: `activeN` for
+ * ruin/recreate/evaluate, times `activeDays.length` for the balance
+ * operators' nested day loop — see `relocateDay`/`swapDays`). Deliberately
+ * on the pessimistic side: `calibratedIterationCap`'s whole job is picking
+ * an iteration count that comfortably fits inside a wall-clock budget
+ * WITHOUT ever consulting the wall clock while doing so, so overestimating
+ * cost (running fewer iterations than the machine could truly do) is the
+ * safe direction — underestimating would let the wall-clock safety valve in
+ * `alns` actually engage, which is the non-determinism this is meant to
+ * prevent.
+ */
+const MS_PER_UNIT = 0.01;
+
+/**
+ * Deterministic conversion from a wall-clock budget to an iteration cap —
+ * see `AlnsOptions.budgetMs`'s doc and `MS_PER_UNIT`'s doc for why this
+ * replaces a live timing check. A pure function of problem size and
+ * `budgetMs`: the same seed + input + budget always yields the same cap,
+ * on any machine, at any time — that determinism is the entire point.
+ */
+function calibratedIterationCap(activeN: number, activeDayCount: number, budgetMs: number): number {
+  const unitsPerIteration = Math.max(1, activeN * Math.max(1, activeDayCount));
+  return Math.max(1, Math.floor(budgetMs / (unitsPerIteration * MS_PER_UNIT)));
+}
+
+/**
+ * Wall-clock safety valve for `alns`'s search loop: NOT part of the
+ * deterministic trajectory (see `AlnsOptions.budgetMs`'s doc) — a last
+ * resort in case `calibratedIterationCap` badly under-costs an iteration on
+ * some pathological input or machine. `SAFETY_MARGIN` makes it deliberately
+ * unlikely to ever engage in practice (that's the point: a safety cap that
+ * is never reached needs no determinism story of its own — see the
+ * determinism-defect writeup's preferred fix). Checked only every
+ * `SAFETY_CHECK_INTERVAL` iterations (not every one) so it costs nothing
+ * once calibration is doing its job; when it does engage, the loop always
+ * breaks at an iteration BOUNDARY (never mid-iteration — `current`/`best`
+ * are only ever updated after a full ruin+recreate/balance+evaluate cycle
+ * completes), so the returned state is always the last fully-completed
+ * iteration's best-so-far: feasible, never a partially-applied operator.
+ */
+const SAFETY_MARGIN = 20;
+const SAFETY_CHECK_INTERVAL = 32;
+
+/**
+ * Improvement-stall early exit: `alns` stops once `best` has gone this many
+ * consecutive iterations without improving, instead of always spending every
+ * iteration `maxIterations`/`budgetMs` would otherwise allow — the loop
+ * previously had no way to notice it had converged and would keep spinning
+ * (re-evaluating ruin/recreate/balance candidates that never beat `best`)
+ * for the rest of its budget even after the search had genuinely settled
+ * (see the perf-defect writeup this fixes; measured on the Tokyo/Warsaw
+ * fixtures and the N=100 synthetic case in perf.test.ts — both settle within
+ * a small fraction of their 1000-iteration cap).
+ *
+ * `stallPatience` is a fraction of THIS run's own iteration cap
+ * (`STALL_PATIENCE_FRACTION`), floored at `STALL_PATIENCE_FLOOR`: scaling
+ * with the cap matters because simulated annealing's whole mechanism is to
+ * wander through non-improving states for a while (especially early, while
+ * `T` is still high) before re-improving on `best` — a fixed small patience
+ * would cut that off prematurely on a long run. The floor exists so a short
+ * run (an incremental resolve's few hundred iterations) isn't tripped by a
+ * handful of unlucky non-improving iterations right at the start; in
+ * practice `resolve()`'s default 300-iteration cap rarely reaches
+ * `STALL_PATIENCE_FLOOR` iterations without at least one improvement, so
+ * this exit mostly changes behaviour on the LONGER runs (an initial full
+ * `solve()`) where converging early actually saves meaningful wall time.
+ *
+ * This does not change WHICH state a run converges to relative to a version
+ * without the exit — the loop only ever breaks immediately after checking
+ * whether `best` improved this iteration, so what is returned is always
+ * `best` as of the last iteration that improved it (or the initial state, if
+ * none did) plus `stallPatience` iterations of confirmation that nothing
+ * better turned up — never a mid-improvement or partially-applied state.
+ * That is an empirical bet, not a proof (a later iteration could in
+ * principle still find something after a long enough stall), so
+ * `STALL_PATIENCE_FRACTION`/`STALL_PATIENCE_FLOOR` are deliberately generous
+ * and were checked against the Tokyo/Warsaw fixture baselines
+ * (tokyo.test.ts/warsaw.test.ts), which are bit-for-bit unchanged by this —
+ * i.e. on those two representative trips, nothing was ever found in the tail
+ * this exit skips.
+ */
+const STALL_PATIENCE_FRACTION = 0.5;
+const STALL_PATIENCE_FLOOR = 200;
+
+/**
  * Adaptive large neighbourhood search (ruin & recreate) with simulated
- * annealing acceptance. Deterministic for a given seed + input when the
- * iteration cap binds; the wall-clock budget is an upper bound.
+ * annealing acceptance. Deterministic for a given seed + input: `budgetMs`
+ * is converted up front into an iteration cap (see `calibratedIterationCap`)
+ * that is itself a pure function of problem size and the budget, never of
+ * wall-clock timing — so the same seed + input + options always run the
+ * same number of iterations, drawing the same RNG sequence, and therefore
+ * produce the same result, regardless of machine speed or GC pauses. A
+ * wall-clock deadline still exists as a safety valve (see its doc above)
+ * but is sized to never engage in practice; if it ever does, that run's
+ * result is best-effort/anytime rather than covered by the guarantee above,
+ * but is always feasible (see the safety-valve doc for why).
  */
 export function alns(problem: Problem, initial: State, opts: AlnsOptions): AlnsResult {
   const rng = mulberry32(opts.seed);
-  const maxIterations = opts.maxIterations ?? 1000;
-  const deadline = opts.budgetMs !== undefined ? Date.now() + opts.budgetMs : Number.POSITIVE_INFINITY;
   const allDays = problem.dayList.map((_, i) => i);
   const activeDays = (opts.activeDays ?? null)
     ? allDays.filter((d) => opts.activeDays!.has(d) && !problem.dayList[d]!.locked)
     : allDays.filter((d) => !problem.dayList[d]!.locked);
 
+  const explicitCap = opts.maxIterations ?? 1000;
+  const budgetCap =
+    opts.budgetMs !== undefined
+      ? calibratedIterationCap(activeWorkSize(initial, activeDays), activeDays.length, opts.budgetMs)
+      : Number.POSITIVE_INFINITY;
+  const maxIterations = Math.min(explicitCap, budgetCap);
+  const deadline =
+    opts.budgetMs !== undefined ? Date.now() + opts.budgetMs * SAFETY_MARGIN : Number.POSITIVE_INFINITY;
+  const stallPatience = Math.max(STALL_PATIENCE_FLOOR, Math.floor(maxIterations * STALL_PATIENCE_FRACTION));
+
+  // Days outside `activeDays` never change for the life of this run (every
+  // mutator below restricts itself to `activeDays`) — cache their stats once
+  // instead of recomputing them on every `evaluate` call, and share their
+  // array references instead of deep-copying them on every `cloneState`
+  // call. See `EvalCache`/`cloneState`'s docs — this is what makes an
+  // incremental `resolve()` (a handful of `activeDays`) actually scale down
+  // with the edit's blast radius instead of paying full-trip cost per
+  // iteration regardless.
+  const cache = buildEvalCache(problem, initial, activeDays);
+
   let current = initial;
-  let best = cloneState(initial);
-  let bestObj = evaluate(problem, best).objective;
+  let best = cloneState(initial, activeDays);
+  let bestObj = evaluate(problem, best, cache).objective;
   let curObj = bestObj;
 
   // bestObj is finite in practice now that `evaluate` keeps the imbalance term
@@ -703,10 +907,11 @@ export function alns(problem: Problem, initial: State, opts: AlnsOptions): AlnsR
   const TEnd = 1e-3;
 
   let lastProgress = Date.now();
+  let stallCount = 0;
   let iter = 0;
   for (; iter < maxIterations; iter++) {
-    if (Date.now() >= deadline) break;
-    const candidate = cloneState(current);
+    if (iter % SAFETY_CHECK_INTERVAL === 0 && Date.now() >= deadline) break;
+    const candidate = cloneState(current, activeDays);
     // Day-rebalancing runs when there's something worth rebalancing: always
     // for a genuine over-budget day (top priority), and for ordinary load
     // imbalance with odds that scale continuously with how uneven the trip
@@ -722,8 +927,8 @@ export function alns(problem: Problem, initial: State, opts: AlnsOptions): AlnsR
         rng() < balanceAttemptProbability(loadSpread(problem, candidate, activeDays)));
     const balanced =
       attemptBalance &&
-      (relocateDay(problem, candidate, rng, activeDays, opts.pinnedToDay) ||
-        swapDays(problem, candidate, rng, activeDays, opts.pinnedToDay));
+      (relocateDay(problem, candidate, rng, activeDays, opts.pinnedToDay, cache) ||
+        swapDays(problem, candidate, rng, activeDays, opts.pinnedToDay, cache));
     if (!balanced) {
       const removed = ruin(problem, candidate, rng, activeDays, opts.pinnedToDay);
       // The unscheduled pool participates in recreate.
@@ -731,7 +936,7 @@ export function alns(problem: Problem, initial: State, opts: AlnsOptions): AlnsR
       recreate(problem, candidate, [...removed, ...poolAttempt], activeDays, opts.pinnedToDay);
     }
 
-    const candObj = evaluate(problem, candidate).objective;
+    const candObj = evaluate(problem, candidate, cache).objective;
     if (candObj < curObj) {
       current = candidate;
       curObj = candObj;
@@ -744,12 +949,23 @@ export function alns(problem: Problem, initial: State, opts: AlnsOptions): AlnsR
       }
     }
     if (curObj < bestObj) {
-      best = cloneState(current);
+      best = cloneState(current, activeDays);
       bestObj = curObj;
+      stallCount = 0;
+    } else {
+      stallCount++;
     }
     if (opts.onProgress && Date.now() - lastProgress >= 100) {
       lastProgress = Date.now();
       opts.onProgress(cloneState(best), iter);
+    }
+    if (stallCount >= stallPatience) {
+      // See `STALL_PATIENCE_FRACTION`'s doc: nothing has beaten `best` for a
+      // full patience window, so the rest of the budget is spent the same
+      // way this tail was — return the same `best` a full-length run would,
+      // just without paying for the remainder of the confirmed-flat tail.
+      iter++;
+      break;
     }
   }
   if (opts.onProgress) opts.onProgress(cloneState(best), iter);

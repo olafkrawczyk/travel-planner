@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildProblem } from "./matrix";
-import { alns, evaluate, relocateDay, swapDays, type State } from "./alns";
+import { alns, buildEvalCache, cloneState, evaluate, insertPlace, relocateDay, swapDays, type State } from "./alns";
 import { computeTimes, sequenceDay } from "./sequence";
-import { solve } from "./solve";
+import { resolve, solve } from "./solve";
 import { split } from "./split";
 import { mulberry32 } from "./rng";
 import { DEG_PER_KM, day, place, trip } from "./testUtils";
+import type { Trip } from "@app/domain";
 
 /** A deterministic 12-place, 3-day trip spread over a grid. */
 function makeTrip() {
@@ -316,4 +317,173 @@ describe("regression: no empty days when places could fill them", () => {
       expect(ev.utilisationSpread).toBeLessThan(0.25);
     });
   }
+});
+
+/**
+ * Regression coverage for the false "deterministic seeded runs" guarantee:
+ * every existing determinism test above passes `budgetMs: 60_000`, where
+ * `maxIterations` always binds first (`alns`'s old `Date.now() >= deadline`
+ * check was never exercised) — but production is time-bound: `resolve`
+ * defaults `budgetMs` to 100, and apps/web ships `editBudgetMs: 5000` /
+ * `initialBudgetMs: 10000` (see store.ts). At those budgets, the old
+ * wall-clock deadline bound BEFORE the iteration cap, so the actual
+ * iteration count — and every RNG draw after the first — depended on
+ * machine speed, GC pauses, background tabs: the same seed and input could
+ * (and, given real-world timing jitter, eventually would) produce different
+ * itineraries. `alns` now converts `budgetMs` into an iteration cap up front
+ * via a deterministic formula (`calibratedIterationCap`, a pure function of
+ * problem size and the budget — never of `Date.now()`), so the search
+ * trajectory's LENGTH is fixed before the loop starts, not measured while it
+ * runs. These tests exercise exactly the budgets that used to matter (100ms,
+ * 5s) on a trip big enough that the calibrated cap actually binds below the
+ * default `maxIterations` — the regime the old bug lived in — and assert
+ * the guarantee the README/spec now make: same seed + input + budget, same
+ * result, on any machine, any time.
+ */
+describe("determinism at shipped, realistic time budgets", () => {
+  /**
+   * ~50 places / 5 days: big enough that `calibratedIterationCap` binds
+   * below the default `maxIterations` (1000) at a 100ms or 5s budget — see
+   * this describe block's header comment for why that matters. Mirrors
+   * perf.test.ts's fixture shape.
+   */
+  function bigTrip(): Trip {
+    let s = 11;
+    const rnd = () => {
+      s = (s * 16807) % 2147483647;
+      return s / 2147483647;
+    };
+    const places = Array.from({ length: 50 }, (_, i) =>
+      place({
+        lat: 35.66 + (i % 10) * 3 * DEG_PER_KM + rnd() * 0.002,
+        lng: 139.68 + Math.floor(i / 10) * 3 * DEG_PER_KM + rnd() * 0.002,
+        id: `p${i}`,
+        dwellMin: 45 + Math.floor(rnd() * 4) * 15,
+        priority: ((i % 3) + 1) as 1 | 2 | 3,
+      }),
+    );
+    const base = place({ lat: 35.66, lng: 139.68, id: "baseA", category: "hotel", dwellMin: 0 });
+    return trip({
+      places: [...places, base],
+      days: [day({ id: "d1" }), day({ id: "d2" }), day({ id: "d3" }), day({ id: "d4" }), day({ id: "d5" })],
+    });
+  }
+
+  it("solve() is deterministic at a 100ms budget (resolve()'s shipped default)", () => {
+    const t = bigTrip();
+    const a = solve({ trip: t, seed: 7, budgetMs: 100 });
+    const b = solve({ trip: t, seed: 7, budgetMs: 100 });
+    expect(a).toEqual(b);
+  });
+
+  it("solve() is deterministic at a 5s budget (apps/web's editBudgetMs)", () => {
+    const t = bigTrip();
+    const a = solve({ trip: t, seed: 7, budgetMs: 5000 });
+    const b = solve({ trip: t, seed: 7, budgetMs: 5000 });
+    expect(a).toEqual(b);
+  });
+
+  it("resolve() is deterministic at its own shipped default (100ms) and at editBudgetMs (5s)", () => {
+    const t = bigTrip();
+    const first = solve({ trip: t, seed: 7, budgetMs: 60_000, maxIterations: 200 });
+    const moved = first.days[0]!.stops[0]!.placeId;
+    const edit = { type: "dragToDay" as const, placeId: moved, dayId: t.days[1]!.id };
+    for (const budgetMs of [100, 5000]) {
+      const a = resolve({ trip: t, previous: first, edit, seed: 7, budgetMs });
+      const b = resolve({ trip: t, previous: first, edit, seed: 7, budgetMs });
+      expect(a).toEqual(b);
+    }
+  });
+
+  it("a short, calibration-bound budget still returns a fully feasible, structurally valid state (no place lost or duplicated)", () => {
+    const t = bigTrip();
+    const itin = solve({ trip: t, seed: 7, budgetMs: 100 });
+    const scheduledIds = itin.days.flatMap((d) => d.stops.map((s) => s.placeId));
+    const unscheduledIds = itin.unscheduled.map((u) => u.placeId);
+    const schedulableCount = t.places.filter((p) => p.category !== "hotel").length;
+    // Every schedulable place is accounted for exactly once: either scheduled
+    // or unscheduled, never both, never neither, never duplicated.
+    expect(scheduledIds.length + unscheduledIds.length).toBe(schedulableCount);
+    expect(new Set(scheduledIds).size).toBe(scheduledIds.length);
+    expect(new Set(unscheduledIds).size).toBe(unscheduledIds.length);
+    expect(scheduledIds.some((id) => unscheduledIds.includes(id))).toBe(false);
+  });
+
+  it("the wall-clock safety valve — if it ever engages — cuts off at a clean iteration boundary, never a partially-applied operator", () => {
+    // A negative budgetMs puts the (20x-scaled) safety-valve deadline in the
+    // past before the loop ever runs, forcing an immediate cutoff at
+    // iteration 0 deterministically (no real timing dependence needed to
+    // exercise this path) — see `alns`'s safety-valve doc.
+    const t = makeTrip();
+    const problem = buildProblem(t);
+    const init = initialState(problem);
+    const expected = initialState(problem); // independently rebuilt — must match `init` bit-for-bit (deterministic construction)
+    const { best, iterations } = alns(problem, init, { seed: 42, maxIterations: 500, budgetMs: -1 });
+    expect(iterations).toBe(0);
+    expect(best).toEqual(expected);
+    // Structural feasibility: nothing lost or duplicated across days/pool.
+    const allIds = new Set(problem.places.map((p) => p.id));
+    const seen = [...best.pool, ...best.days.flat()];
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(new Set(seen)).toEqual(allIds);
+  });
+
+  it("EvalCache-scoped evaluate() matches a from-scratch evaluate() while inactive days are held constant (the invariant the perf fix depends on)", () => {
+    const t = makeTrip();
+    const problem = buildProblem(t);
+    const state = initialState(problem); // everything constructed onto day 0; days 1-2 empty
+    const activeDays = [1, 2]; // day 0 is "inactive" — its stats get cached
+    const cache = buildEvalCache(problem, state, activeDays);
+    expect(evaluate(problem, state, cache)).toEqual(evaluate(problem, state));
+
+    // Mutate only the active days (day 0, outside activeDays, stays byte-for-
+    // byte the same array content) — the cached day-0 stats must still be
+    // valid, since that's exactly the invariant `alns`'s mutators uphold.
+    const mutated = cloneState(state, activeDays);
+    mutated.days[1] = [...mutated.days[1]!].reverse();
+    expect(evaluate(problem, mutated, cache)).toEqual(evaluate(problem, mutated));
+  });
+
+  /**
+   * Regression test for `insertPlace`'s weights.travel omission — see
+   * sequence.test.ts's matching test (same scenario, same numbers) for the
+   * full derivation of why "C","B" costs less at a low travel weight and
+   * "B","C" costs less at the default weight.
+   */
+  it("insertPlace threads weights.travel through its cost comparison (not silently 1)", () => {
+    function tradeoffProblem(weightsTravel: number) {
+      const t = trip({
+        places: [
+          place({ id: "base", lat: 0, lng: 0, category: "hotel", dwellMin: 0 }),
+          place({ id: "B", lat: 0, lng: 0.001, dwellMin: 5, appointment: { dayId: "d1", start: "11:00" } }),
+          place({ id: "C", lat: 0, lng: 0.002, dwellMin: 5 }),
+        ],
+        days: [day({ id: "d1", baseStartId: "base", baseEndId: "base" })],
+        travelOverrides: [
+          { fromId: "base", toId: "C", minutes: 30, symmetric: false },
+          { fromId: "C", toId: "base", minutes: 5, symmetric: false },
+          { fromId: "base", toId: "B", minutes: 1, symmetric: false },
+          { fromId: "B", toId: "base", minutes: 20, symmetric: false },
+          { fromId: "C", toId: "B", minutes: 15, symmetric: true },
+        ],
+      });
+      t.settings.weights = {
+        travel: weightsTravel,
+        wait: 0.5,
+        mustDropped: 1000,
+        niceDropped: 10,
+        dayImbalance: 1,
+        overBudget: 3,
+      };
+      return buildProblem(t);
+    }
+
+    const low: State = { days: [["B"]], pool: [] };
+    insertPlace(tradeoffProblem(0.3), low, 0, "C", false, false);
+    expect(low.days[0]).toEqual(["C", "B"]);
+
+    const normal: State = { days: [["B"]], pool: [] };
+    insertPlace(tradeoffProblem(1), normal, 0, "C", false, false);
+    expect(normal.days[0]).toEqual(["B", "C"]);
+  });
 });

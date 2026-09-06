@@ -114,6 +114,18 @@ function parseDurations(json: OsrmTableResponse, n: number): number[][] {
       throw new OsrmError("malformed", `OSRM durations row ${i} must have ${n} entries`);
     }
     return row.map((seconds, j) => {
+      // OSRM legitimately returns `null` for a genuinely unroutable pair
+      // (islands, ferries, unsnapped points) — that is real "no API data for
+      // this pair", not a malformed response. Discarding the WHOLE N×N
+      // matrix (and silently falling the entire trip back to the heuristic)
+      // over one such pair throws away every other cell's real routed data
+      // for no reason. `@app/solver`'s `resolveApiOrHeuristic` (matrix.ts)
+      // already treats a non-finite duration as "fall back to the heuristic
+      // for this cell" — so NaN here does exactly the right thing, per cell,
+      // with no change needed on the consumer side. Anything else invalid
+      // (wrong type, negative, non-finite) is still a genuinely malformed
+      // response and still throws.
+      if (seconds === null) return NaN;
       if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
         throw new OsrmError("malformed", `OSRM duration at [${i}][${j}] is not a valid number`);
       }
