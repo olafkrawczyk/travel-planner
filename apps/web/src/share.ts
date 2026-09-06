@@ -13,6 +13,17 @@
 /** Safe maximum URL fragment length (chars) before we fall back to a file. */
 export const MAX_FRAGMENT = 8000;
 
+/**
+ * Ceiling on decompressed share-link payload size (bytes). `MAX_FRAGMENT`
+ * only bounds the COMPRESSED (base64url) payload — deflate can expand a
+ * small, crafted input far past that before `TextDecoder`/`JSON.parse` ever
+ * run. No legitimate trip comes close to this (schema-level caps in
+ * `@app/domain` already bound place/day counts and string field lengths); it
+ * exists purely to cut a decompression bomb off early, before it fully
+ * materializes in memory.
+ */
+export const MAX_DECOMPRESSED_BYTES = 5_000_000; // 5 MB
+
 export const FRAGMENT_PREFIX = "#trip=";
 
 export type ShareErrorCode =
@@ -97,6 +108,45 @@ async function readAll(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> 
   return out;
 }
 
+/**
+ * Same as `readAll`, but bails out as soon as the running total exceeds
+ * `maxBytes` instead of reading the stream to completion — used only for
+ * decompression (see `MAX_DECOMPRESSED_BYTES`), where the whole point is to
+ * never let an oversized payload fully materialize in memory.
+ */
+async function readAllCapped(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = stream.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        total += value.length;
+        if (total > maxBytes) {
+          throw new ShareError(
+            "inflate",
+            `Share link payload is too large once decompressed (over ${maxBytes} bytes).`,
+          );
+        }
+        chunks.push(value);
+      }
+    }
+  } finally {
+    // Stop the decompressor from doing any further work once we've either
+    // finished or bailed out early; also releases the reader lock.
+    await reader.cancel().catch(() => {});
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
+}
+
 /** Encode trip JSON into a `#trip=...` URL fragment; throws `ShareError("oversize")` past MAX_FRAGMENT. */
 export async function encodeTrip(json: string): Promise<string> {
   if (typeof CompressionStream === "undefined") {
@@ -143,8 +193,9 @@ export async function decodeTrip(fragment: string): Promise<string> {
   }
   let inflated: Uint8Array;
   try {
-    inflated = await readAll(byteStream(bytes).pipeThrough(rawInflate()));
+    inflated = await readAllCapped(byteStream(bytes).pipeThrough(rawInflate()), MAX_DECOMPRESSED_BYTES);
   } catch (e) {
+    if (e instanceof ShareError) throw e; // already typed (e.g. the size-cap trip above)
     throw new ShareError("inflate", "Share link payload is corrupted.", e);
   }
   let json: string;

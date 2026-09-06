@@ -35,23 +35,62 @@ export const AppointmentSchema = z.object({
 });
 export type Appointment = z.infer<typeof AppointmentSchema>;
 
+/**
+ * Bounds below defend against a hostile or corrupt trip file/share-link
+ * bloating IndexedDB or blowing up memory — none of them are reachable by any
+ * legitimate trip:
+ *  - `PLACE_NAME_MAX`/`PLACE_NOTES_MAX`: the longest real place name is a
+ *    couple dozen characters; notes are free text but 5,000 chars is several
+ *    printed pages — no itinerary note is that long.
+ *  - `PLACE_REGION_MAX`/`PLACE_OSM_ID_MAX`: both are short identifiers
+ *    (a cluster label, or an OSM `node/12345678`-shaped id) — 200 chars is
+ *    already 10x any real value.
+ *  - `OPENING_HOURS_MAX_DATES`/`OPENING_HOURS_MAX_WINDOWS_PER_DATE`: a place
+ *    has at most one `openingHours` entry per date the trip covers (bounded
+ *    by `MAX_TRIP_DAYS` below) and realistically 1-2 open/close windows per
+ *    date (e.g. a lunch break); the caps are set an order of magnitude above
+ *    that.
+ */
+const PLACE_NAME_MAX = 200;
+const PLACE_NOTES_MAX = 5000;
+const PLACE_REGION_MAX = 200;
+const PLACE_OSM_ID_MAX = 200;
+const OPENING_HOURS_MAX_DATES = 400;
+const OPENING_HOURS_MAX_WINDOWS_PER_DATE = 20;
+
+/** Opening-hour windows per concrete date (YYYY-MM-DD). Absent/empty = always
+ *  open. See the bounds doc comment above `PLACE_NAME_MAX` for why these caps
+ *  are sized the way they are. */
+export const OpeningHoursSchema = z
+  .record(
+    z.string().max(32),
+    z
+      .array(TimeWindowSchema)
+      .max(
+        OPENING_HOURS_MAX_WINDOWS_PER_DATE,
+        `A single date cannot have more than ${OPENING_HOURS_MAX_WINDOWS_PER_DATE} opening-hour windows.`,
+      ),
+  )
+  .refine((v) => Object.keys(v).length <= OPENING_HOURS_MAX_DATES, {
+    message: `openingHours cannot list more than ${OPENING_HOURS_MAX_DATES} dates.`,
+  });
+
 export const PlaceSchema = z.object({
   id: IdSchema,
-  name: z.string().min(1),
-  nameLocal: z.string().optional(),
+  name: z.string().min(1).max(PLACE_NAME_MAX),
+  nameLocal: z.string().max(PLACE_NAME_MAX).optional(),
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   category: CategorySchema,
   dwellMin: z.number().int().min(0).max(1440),
   priority: z.union([z.literal(1), z.literal(2), z.literal(3)]), // 1 = must
-  /** Opening-hour windows per concrete date (YYYY-MM-DD). Absent/empty = always open. */
-  openingHours: z.record(z.string(), z.array(TimeWindowSchema)).optional(),
+  openingHours: OpeningHoursSchema.optional(),
   appointment: AppointmentSchema.optional(),
   /** Soft force: keep this place on the given day, relaxing that day's time budget. */
   forceDayId: IdSchema.optional(),
-  region: IdSchema.optional(),
-  osmId: z.string().optional(),
-  notes: z.string().optional(),
+  region: z.string().min(1).max(PLACE_REGION_MAX).optional(),
+  osmId: z.string().max(PLACE_OSM_ID_MAX).optional(),
+  notes: z.string().max(PLACE_NOTES_MAX).optional(),
 });
 export type Place = z.infer<typeof PlaceSchema>;
 
@@ -85,7 +124,14 @@ export type TravelOverride = z.infer<typeof TravelOverrideSchema>;
 
 export const TripSettingsSchema = z.object({
   carOnly: z.boolean().default(false),
-  solverStrategy: z.enum(["routeFirst", "clusterFirst"]).default("clusterFirst"),
+  // routeFirst is the documented, fixture-tested default; clusterFirst stays
+  // opt-in behind the DevPanel flag (apps/web/src/store.ts `defaultFlags`,
+  // apps/web/src/tripFactory.ts `defaultSettings`) until it's been measured
+  // side-by-side against routeFirst on real trips. All three declarations of
+  // this default must agree — `LocalRepository` parses every stored trip on
+  // read and write, so a disagreeing zod default here silently overrides
+  // whatever the UI/tripFactory claim for any trip missing the field.
+  solverStrategy: z.enum(["routeFirst", "clusterFirst"]).default("routeFirst"),
   walkSpeedKmh: z.number().positive().default(4.5),
   walkMaxKm: z.number().positive().default(1.5),
   /** Urban transit (metro/bus): flat speed + a fixed overhead for
@@ -134,13 +180,36 @@ export const TripSettingsSchema = z.object({
 });
 export type TripSettings = z.infer<typeof TripSettingsSchema>;
 
+/**
+ * Hard ceiling on `TripSchema.days`, enforced for EVERY path a `Trip` can
+ * enter the app through (file import, share-link import, and every read from
+ * storage — all go through `parseTrip`/`TripSchema`). This mirrors
+ * `apps/web/src/tripFactory.ts`'s `MAX_TRIP_DAYS` (same value, 60) — that one
+ * gives a friendly "Trip too long" message at the trip-creation UI boundary,
+ * before any solve is even attempted; this one is the schema-level backstop
+ * for every other way a trip can reach the store, none of which call
+ * `validateTripLength`. See tripFactory.ts's doc comment on its own
+ * `MAX_TRIP_DAYS` for why an uncapped day count can pin the solver worker
+ * indefinitely. Kept as an independent constant rather than imported —
+ * `@app/domain` sits below `apps/web` in the dependency graph — so keep the
+ * two values in sync if either ever changes.
+ */
+const MAX_TRIP_DAYS = 60;
+/** Hard ceiling on `TripSchema.places`. Even a full `MAX_TRIP_DAYS`-length
+ *  trip with an unusually packed schedule (~10 places/day) lands under 1,000;
+ *  2,000 leaves generous headroom for real trips while still bounding a
+ *  hostile/corrupt file's ability to bloat IndexedDB or slow the solver. */
+const MAX_TRIP_PLACES = 2000;
+
 export const TripSchema = z.object({
   id: IdSchema,
   schemaVersion: z.number().int().positive(),
   name: z.string().min(1),
   timezone: z.string().default("UTC"),
-  days: z.array(DaySchema),
-  places: z.array(PlaceSchema),
+  days: z.array(DaySchema).max(MAX_TRIP_DAYS, `Trip too long: cannot exceed ${MAX_TRIP_DAYS} days.`),
+  places: z
+    .array(PlaceSchema)
+    .max(MAX_TRIP_PLACES, `Trip has too many places: cannot exceed ${MAX_TRIP_PLACES} places.`),
   travelOverrides: z.array(TravelOverrideSchema),
   settings: TripSettingsSchema,
   createdAt: z.string(),
@@ -232,7 +301,12 @@ export function windowsForDate(place: Place, date: string): TimeWindow[] | undef
   return place.openingHours?.[date];
 }
 
-/** Parse a stored/exported trip: migrate to current version, then zod-validate. */
+/**
+ * Parse a stored/exported trip: migrate to current version, then zod-validate.
+ * Throws a plain `Error` with a readable message on failure — never the raw
+ * `ZodError` (whose default `.message` is a JSON-stringified issue array,
+ * unreadable if it reaches a toast or an import-error banner unmodified).
+ */
 export function parseTrip(raw: unknown): Trip {
   const obj = (raw ?? {}) as Record<string, unknown>;
   const v = typeof obj.schemaVersion === "number" ? obj.schemaVersion : 0;
@@ -242,5 +316,10 @@ export function parseTrip(raw: unknown): Trip {
     if (migrate) cur = migrate(cur);
     cur = { ...cur, schemaVersion: version };
   }
-  return TripSchema.parse(cur);
+  const result = TripSchema.safeParse(cur);
+  if (!result.success) {
+    const detail = result.error.issues.map((i) => i.message).join("; ") || "invalid trip data";
+    throw new Error(`Trip is invalid: ${detail}`);
+  }
+  return result.data;
 }

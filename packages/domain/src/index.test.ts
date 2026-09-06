@@ -127,6 +127,87 @@ describe("trip schema", () => {
     expect(windowsForDate(bare, "2026-04-01")).toBeUndefined();
   });
 
+  it("rejects a trip with more days than the hard cap, with a clear message (not a raw ZodError dump)", () => {
+    const tooLong = {
+      ...sampleTrip,
+      days: Array.from({ length: 61 }, (_, i) => ({
+        ...sampleTrip.days[0],
+        id: `day_${i}`,
+        date: `2026-04-${String((i % 28) + 1).padStart(2, "0")}`,
+      })),
+    };
+    expect(() => parseTrip(tooLong)).toThrow(/Trip too long/);
+    // Not a raw ZodError JSON dump.
+    expect(() => parseTrip(tooLong)).not.toThrow(/"code":|"path":/);
+  });
+
+  it("accepts a trip at exactly the day cap (60)", () => {
+    const atCap = {
+      ...sampleTrip,
+      days: Array.from({ length: 60 }, (_, i) => ({
+        ...sampleTrip.days[0],
+        id: `day_${i}`,
+        date: `2026-01-${String((i % 28) + 1).padStart(2, "0")}`,
+      })),
+    };
+    expect(() => parseTrip(atCap)).not.toThrow();
+  });
+
+  it("rejects a trip with more places than the hard cap", () => {
+    const tooManyPlaces = {
+      ...sampleTrip,
+      places: Array.from({ length: 2001 }, (_, i) => ({
+        ...sampleTrip.places[0],
+        id: `plc_${i}`,
+      })),
+    };
+    expect(() => parseTrip(tooManyPlaces)).toThrow(/too many places/);
+  });
+
+  it("bounds unbounded Place string fields (name, notes, region, osmId)", () => {
+    const base = sampleTrip.places[0]!;
+    expect(() => TripSchema.parse({ ...sampleTrip, places: [{ ...base, name: "x".repeat(201) }] })).toThrow();
+    expect(() => TripSchema.parse({ ...sampleTrip, places: [{ ...base, notes: "x".repeat(5001) }] })).toThrow();
+    expect(() =>
+      TripSchema.parse({ ...sampleTrip, places: [{ ...base, region: "x".repeat(201) }] }),
+    ).toThrow();
+    expect(() =>
+      TripSchema.parse({ ...sampleTrip, places: [{ ...base, osmId: "x".repeat(201) }] }),
+    ).toThrow();
+    // At the boundary, all still valid.
+    expect(() =>
+      TripSchema.parse({
+        ...sampleTrip,
+        places: [
+          { ...base, name: "x".repeat(200), notes: "x".repeat(5000), region: "x".repeat(200), osmId: "x".repeat(200) },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it("bounds openingHours: caps windows per date and total dates listed", () => {
+    const base = sampleTrip.places[0]!;
+    const tooManyWindows = {
+      ...sampleTrip,
+      places: [
+        {
+          ...base,
+          openingHours: { "2026-04-01": Array.from({ length: 21 }, () => ({ start: "09:00", end: "10:00" })) },
+        },
+      ],
+    };
+    expect(() => TripSchema.parse(tooManyWindows)).toThrow();
+
+    const tooManyDates: Record<string, { start: string; end: string }[]> = {};
+    for (let i = 0; i < 401; i++) {
+      tooManyDates[`2026-${String((i % 12) + 1).padStart(2, "0")}-${String((i % 28) + 1).padStart(2, "0")}-${i}`] = [
+        { start: "09:00", end: "10:00" },
+      ];
+    }
+    const tooManyDatesTrip = { ...sampleTrip, places: [{ ...base, openingHours: tooManyDates }] };
+    expect(() => TripSchema.parse(tooManyDatesTrip)).toThrow();
+  });
+
   it("itinerary schema round-trips", () => {
     const itin = ItinerarySchema.parse({
       days: [

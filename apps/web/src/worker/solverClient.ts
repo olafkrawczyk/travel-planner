@@ -61,16 +61,92 @@ import type { SolveApi, SolveRequest } from "./solver.worker";
  * capped by `RELEASE_FALLBACK_MS` rather than hanging forever; the success
  * path never touches that timer, since `fired` resolves on its own.
  */
-const worker = new Worker(new URL("./solver.worker.ts", import.meta.url), {
-  type: "module",
-});
-const remote = Comlink.wrap<SolveApi>(worker);
+let worker: Worker | undefined;
+let workerInitError: unknown;
+try {
+  worker = new Worker(new URL("./solver.worker.ts", import.meta.url), {
+    type: "module",
+  });
+} catch (e) {
+  // This runs at MODULE SCOPE — letting a failed worker-chunk load (offline,
+  // blocked request, corrupted build asset, ...) throw here would take down
+  // app boot before React ever renders, with no fallback. Fail soft instead:
+  // `worker`/`remote` stay undefined, and every `solve`/`resolve` call below
+  // rejects immediately with a clear error (see the `!remote` guards) that
+  // the store's existing `failSolve` already knows how to surface.
+  workerInitError = e;
+  bridgeLog("worker: failed to construct", { error: String(e) });
+}
+const remote = worker ? Comlink.wrap<SolveApi>(worker) : undefined;
 
 /** Push the current logging flag to the worker (workers have no localStorage). */
 export function syncWorkerLogging(): void {
+  if (!remote) return;
   void remote.setLogging(solverLogEnabled());
 }
 syncWorkerLogging();
+
+/**
+ * Reject functions for every `solve`/`resolve` call currently in flight (see
+ * `guardCall` below). `onerror`/`onmessageerror` are the ONLY signal available
+ * when the worker dies outright — an uncaught exception in worker global
+ * scope, an OOM kill, a corrupted message — because neither event causes the
+ * outstanding `remote.solve()`/`remote.resolve()` promise to settle on its
+ * own; the worker's reply message for it simply never arrives. Without this,
+ * `onDone` never fires, the store's `solving` flag never clears, and nothing
+ * short of a page reload recovers (no call site here ever calls
+ * `worker.terminate()`). A `Set` (not a single slot) because more than one
+ * call can be in flight at once (e.g. `solve` plus a background
+ * `fetchApiMatrixThenReSolve` re-solve).
+ */
+const pendingRejects = new Set<(e: unknown) => void>();
+
+/** Reject every currently in-flight call with `e` — see `pendingRejects`. */
+function failPendingCalls(e: unknown): void {
+  const rejects = [...pendingRejects];
+  pendingRejects.clear();
+  for (const reject of rejects) reject(e);
+}
+
+/**
+ * Wrap a Comlink call's promise so a worker crash (see `failPendingCalls`)
+ * can reject it even though the worker itself will never reply. Settles
+ * exactly like the underlying `call` on the happy path; `scheduleRelease`
+ * awaits this instead of the raw `call` so callback proxy ports still get
+ * released after a crash rather than leaking.
+ */
+function guardCall<T>(call: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    pendingRejects.add(reject);
+    call.then(
+      (v) => {
+        pendingRejects.delete(reject);
+        resolve(v);
+      },
+      (e: unknown) => {
+        pendingRejects.delete(reject);
+        reject(e);
+      },
+    );
+  });
+}
+
+if (worker) {
+  worker.addEventListener("error", (ev) => {
+    // Duck-type rather than `instanceof ErrorEvent`: that global doesn't
+    // exist in every environment this module can load in (e.g. Node test
+    // environments), and a real browser `ErrorEvent`'s `.message` is all we
+    // want from it anyway.
+    const rawMessage = (ev as { message?: unknown }).message;
+    const message = typeof rawMessage === "string" && rawMessage ? rawMessage : "unknown error";
+    bridgeLog("worker: onerror", { error: message });
+    failPendingCalls(new Error(`Solver worker crashed: ${message}`));
+  });
+  worker.addEventListener("messageerror", () => {
+    bridgeLog("worker: onmessageerror");
+    failPendingCalls(new Error("Solver worker sent a message that could not be understood."));
+  });
+}
 
 /**
  * The local half (`port1`) of each callback proxy's `MessageChannel`,
@@ -243,9 +319,17 @@ export const solverClient = {
         budgetMs: req.budgetMs,
       });
     }
+    if (!remote) {
+      bridgeLog("main→worker solve FAILED (no worker)", { error: String(workerInitError) });
+      return Promise.reject(
+        workerInitError instanceof Error
+          ? workerInitError
+          : new Error("Solver worker is unavailable — it failed to start."),
+      );
+    }
     const { progress, done, doneFired } = proxyCallbacks(onProgress, onDone);
     try {
-      const call = remote.solve(trip, req, progress, done);
+      const call = guardCall(remote.solve(trip, req, progress, done));
       void scheduleRelease(call, doneFired, progress, done);
       return call;
     } catch (e) {
@@ -274,9 +358,17 @@ export const solverClient = {
         budgetMs: req.budgetMs,
       });
     }
+    if (!remote) {
+      bridgeLog("main→worker resolve FAILED (no worker)", { error: String(workerInitError) });
+      return Promise.reject(
+        workerInitError instanceof Error
+          ? workerInitError
+          : new Error("Solver worker is unavailable — it failed to start."),
+      );
+    }
     const { progress, done, doneFired } = proxyCallbacks(onProgress, onDone);
     try {
-      const call = remote.resolve(trip, previous, edit, req, progress, done);
+      const call = guardCall(remote.resolve(trip, previous, edit, req, progress, done));
       void scheduleRelease(call, doneFired, progress, done);
       return call;
     } catch (e) {
@@ -305,4 +397,7 @@ export const __testing = {
   releaseCallbackProxy,
   portsByCallbackProxy,
   RELEASE_FALLBACK_MS,
+  guardCall,
+  failPendingCalls,
+  pendingRejects,
 };

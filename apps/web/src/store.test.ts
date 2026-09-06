@@ -15,8 +15,8 @@ vi.mock("@app/storage", () => ({
     async get(): Promise<undefined> {
       return undefined;
     }
-    async list(): Promise<never[]> {
-      return [];
+    async list(): Promise<{ trips: never[]; failedCount: number }> {
+      return { trips: [], failedCount: 0 };
     }
     async delete(): Promise<void> {}
   },
@@ -410,7 +410,7 @@ function failingRepo(message: string) {
       throw new Error(message);
     }),
     get: vi.fn(async () => undefined),
-    list: vi.fn(async () => []),
+    list: vi.fn(async () => ({ trips: [], failedCount: 0 })),
     delete: vi.fn(async () => {}),
   };
 }
@@ -501,5 +501,183 @@ describe("createTrip length cap", () => {
     const state = useStore.getState();
     expect(state.toast).not.toContain("Trip too long");
     expect(state.currentTrip?.days).toHaveLength(MAX_TRIP_DAYS);
+  });
+});
+
+/** A minimal repo double — same shape as `failingRepo`, but callers plug in
+ *  whichever method(s) they need to fail. */
+function repoDouble(overrides: {
+  list?: () => Promise<{ trips: never[]; failedCount: number }>;
+  delete?: () => Promise<void>;
+  importJson?: () => Promise<unknown>;
+}) {
+  return {
+    put: vi.fn(async () => {}),
+    get: vi.fn(async () => undefined),
+    list: vi.fn(overrides.list ?? (async () => ({ trips: [], failedCount: 0 }))),
+    delete: vi.fn(overrides.delete ?? (async () => {})),
+    ...(overrides.importJson ? { importJson: vi.fn(overrides.importJson) } : {}),
+  };
+}
+
+describe("init() error handling (read path)", () => {
+  it("surfaces a user-visible error and does not throw/reject when repo.list() rejects (e.g. IndexedDB unavailable)", async () => {
+    const repo = repoDouble({
+      list: () => {
+        throw new Error("IndexedDB is not available");
+      },
+    });
+    useStore.setState({
+      // A pre-existing trip list must survive a failed read — a failed read
+      // looking identical to "you have no trips" is the whole bug.
+      trips: [{ id: "stale" } as never],
+      toast: null,
+      repo: repo as unknown as ReturnType<typeof useStore.getState>["repo"],
+    });
+
+    await expect(useStore.getState().init()).resolves.toBeUndefined();
+
+    const state = useStore.getState();
+    expect(state.toast).toContain("Could not load your saved trips");
+    expect(state.toast).toContain("IndexedDB is not available");
+    expect(state.trips).toEqual([{ id: "stale" }]);
+  });
+
+  it("surfaces a toast counting how many stored rows failed to load, without dropping the ones that did load", async () => {
+    const goodTrip = multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+    const repo = repoDouble({
+      list: async () => ({ trips: [goodTrip] as never[], failedCount: 2 }),
+    });
+    useStore.setState({
+      trips: [],
+      toast: null,
+      repo: repo as unknown as ReturnType<typeof useStore.getState>["repo"],
+    });
+
+    await useStore.getState().init();
+
+    const state = useStore.getState();
+    expect(state.trips).toEqual([goodTrip]);
+    expect(state.toast).toContain("2");
+    expect(state.toast?.toLowerCase()).toContain("could not be loaded");
+  });
+
+  it("sets no toast at all when everything loads cleanly", async () => {
+    const goodTrip = multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+    const repo = repoDouble({ list: async () => ({ trips: [goodTrip] as never[], failedCount: 0 }) });
+    useStore.setState({ trips: [], toast: null, repo: repo as unknown as ReturnType<typeof useStore.getState>["repo"] });
+
+    await useStore.getState().init();
+
+    expect(useStore.getState().toast).toBeNull();
+    expect(useStore.getState().trips).toEqual([goodTrip]);
+  });
+});
+
+describe("deleteTrip() error handling", () => {
+  it("keeps the trip (and current selection) intact and surfaces a toast when repo.delete() rejects", async () => {
+    const trip = multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+    const repo = repoDouble({
+      delete: () => {
+        throw new Error("quota exceeded");
+      },
+    });
+    useStore.setState({
+      trips: [trip],
+      currentTrip: trip,
+      itinerary: emptyItinerary,
+      toast: null,
+      repo: repo as unknown as ReturnType<typeof useStore.getState>["repo"],
+    });
+
+    await useStore.getState().deleteTrip(trip.id);
+
+    const state = useStore.getState();
+    expect(state.trips).toEqual([trip]); // not removed — the delete failed
+    expect(state.currentTrip).toBe(trip); // not closed either
+    expect(state.itinerary).toBe(emptyItinerary);
+    expect(state.toast).toContain("Delete failed");
+    expect(state.toast).toContain("quota exceeded");
+  });
+
+  it("removes the trip and clears the current selection when repo.delete() succeeds", async () => {
+    const trip = multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+    useStore.setState({
+      trips: [trip],
+      currentTrip: trip,
+      itinerary: emptyItinerary,
+      toast: null,
+      repo: new LocalRepository(),
+    });
+
+    await useStore.getState().deleteTrip(trip.id);
+
+    const state = useStore.getState();
+    expect(state.trips).toEqual([]);
+    expect(state.currentTrip).toBeNull();
+    expect(state.itinerary).toBeNull();
+  });
+});
+
+describe("importTripJson (fresh-id copy + dedupe + over-cap rejection)", () => {
+  it("adds the imported trip and tells the caller it was imported as a copy", async () => {
+    const trip = emptyTrip("Imported", dateRange("2026-04-01", "2026-04-02"));
+    const repo = repoDouble({ importJson: async () => trip });
+    useStore.setState({
+      trips: [],
+      importError: null,
+      toast: null,
+      repo: repo as unknown as ReturnType<typeof useStore.getState>["repo"],
+    });
+
+    const ok = await useStore.getState().importTripJson("{}");
+
+    expect(ok).toBe(true);
+    const state = useStore.getState();
+    expect(state.trips).toEqual([trip]);
+    expect(state.importError).toBeNull();
+    expect(state.toast).toContain("copy");
+  });
+
+  // Item 1+2 end-to-end at the store layer: even though `repo.importJson`
+  // always mints a fresh id (so this shouldn't be reachable in practice
+  // anymore), the in-memory list must dedupe on id the same way `mutateTrip`
+  // does — otherwise one Dexie row could still back two list entries, and
+  // `deleteTrip`'s `filter(t => t.id !== id)` would remove both at once.
+  it("dedupes on id instead of adding a second in-memory entry for the same trip id", async () => {
+    const trip = emptyTrip("Imported", dateRange("2026-04-01", "2026-04-02"));
+    const staleInMemoryCopy = { ...trip, name: "stale in-memory copy" };
+    const repo = repoDouble({ importJson: async () => trip });
+    useStore.setState({
+      trips: [staleInMemoryCopy],
+      importError: null,
+      repo: repo as unknown as ReturnType<typeof useStore.getState>["repo"],
+    });
+
+    await useStore.getState().importTripJson("{}");
+
+    const state = useStore.getState();
+    expect(state.trips).toHaveLength(1); // never two entries for one id
+    expect(state.trips[0]).toEqual(trip); // replaced with the freshly-imported version
+  });
+
+  it("surfaces the repository's rejection as a readable importError (not a raw ZodError dump)", async () => {
+    const repo = repoDouble({
+      importJson: () => {
+        throw new Error("Import failed: Trip is invalid: Trip too long: cannot exceed 60 days. Existing data is unchanged.");
+      },
+    });
+    useStore.setState({
+      trips: [],
+      importError: null,
+      repo: repo as unknown as ReturnType<typeof useStore.getState>["repo"],
+    });
+
+    const ok = await useStore.getState().importTripJson("whatever");
+
+    expect(ok).toBe(false);
+    const err = useStore.getState().importError;
+    expect(err).toContain("Trip too long");
+    expect(err).not.toMatch(/"code":|"path":/);
   });
 });

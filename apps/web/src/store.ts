@@ -12,7 +12,7 @@ import {
 import { LocalRepository, DexieMatrixCache, matrixCacheKey, type MatrixCache } from "@app/storage";
 import { MemoryGeoCache, PhotonClient, OsrmClient, OverpassClient, expandOpeningHours } from "@app/geo";
 import { apiMatrixCoords, type Edit } from "@app/solver";
-import { autoClusterTrip } from "./clustering";
+import { applyAutoCluster } from "./clustering";
 import { solverClient } from "./worker/solverClient";
 import { bridgeLog } from "./worker/log";
 import {
@@ -104,6 +104,13 @@ const defaultFlags: Flags = {
   autoFetchOpeningHours: true,
 };
 
+/** One queued toast (P1 #5, additive). See `StoreState.toasts`. */
+export interface ToastEntry {
+  id: number;
+  message: string;
+  kind: "info" | "error";
+}
+
 export interface StoreState {
   repo: LocalRepository;
   trips: Trip[];
@@ -135,6 +142,12 @@ export interface StoreState {
   devPanelOpen: boolean;
   importError: string | null;
   toast: string | null;
+  /** Queued toast entries surfaced to the UI (P1 #5, additive): every write to
+   *  `toast` above — from any existing call site, unchanged — is drained into
+   *  this stack by a module-level subscription below, so no call site needed
+   *  to change. `kind: "error"` entries persist until dismissed; `"info"`
+   *  entries auto-dismiss. See ToastStack / LiveRegion components. */
+  toasts: ToastEntry[];
   /** True once the trip has edits the current itinerary does not reflect
    *  (a deferred edit landed since the last solve started). Cleared whenever
    *  a solve starts, since that solve covers the trip as it stands then. */
@@ -188,6 +201,8 @@ export interface StoreState {
   updateFlags(partial: Partial<Flags>): void;
   toggleDevPanel(open?: boolean): void;
   setToast(message: string | null): void;
+  /** Dismiss one queued toast (P1 #5, additive — see `toasts`). */
+  dismissToast(id: number): void;
 }
 
 let resolveCounter = 0;
@@ -304,12 +319,19 @@ export const useStore = create<StoreState>((set, get) => {
   function requestSolve(edit: Edit): void {
     let { currentTrip, itinerary, flags } = get();
     if (!currentTrip) return;
-    
-    const clusteredTrip = autoClusterTrip(currentTrip);
-    if (clusteredTrip !== currentTrip) {
-      set({ currentTrip: clusteredTrip });
-      void persist(clusteredTrip);
-      currentTrip = clusteredTrip;
+
+    // Auto-derive missing `Place.region` values only for clusterFirst trips
+    // — routeFirst never reads `region`, so running this unconditionally
+    // relabelled unrelated places on every solve (including every drag) for
+    // no visible effect. Routed through `mutateTrip` (default "full" edit,
+    // not a LIVE_EDIT) so this is a normal undoable step — pushed onto the
+    // undo stack and persisted like any other edit — instead of the bare
+    // `set()`+`persist()` this used to be, which was invisible to undo and
+    // fired unconditionally. `mutateTrip` no-ops (no undo entry, no persist)
+    // when `applyAutoCluster` doesn't actually change anything.
+    if (currentTrip.settings.solverStrategy === "clusterFirst") {
+      get().mutateTrip(applyAutoCluster);
+      currentTrip = get().currentTrip!;
     }
 
     const call = ++resolveCounter;
@@ -398,12 +420,30 @@ export const useStore = create<StoreState>((set, get) => {
     devPanelOpen: false,
     importError: null,
     toast: null,
+    toasts: [],
     dirty: false,
     pendingChanges: 0,
 
     async init() {
-      const trips = await get().repo.list();
-      set({ trips });
+      try {
+        const { trips, failedCount } = await get().repo.list();
+        set({ trips });
+        if (failedCount > 0) {
+          set({
+            toast: `${failedCount} saved trip${failedCount === 1 ? "" : "s"} could not be loaded (possibly corrupted, or saved by a newer version of the app) and ${failedCount === 1 ? "was" : "were"} skipped — your other trips are unaffected.`,
+          });
+        }
+      } catch (e) {
+        // Never let this reject: App.tsx calls `void init()`, so a rejection
+        // here becomes an unhandled promise rejection and the user just sees
+        // an empty trip list — indistinguishable from a fresh install, even
+        // though nothing was actually lost. Surface it instead.
+        const message = e instanceof Error ? e.message : String(e);
+        bridgeLog("main: init failed", { error: message });
+        set({
+          toast: `Could not load your saved trips (${message}). Your trips have not been deleted — try reloading, or check that this browser allows local storage (e.g. not private/incognito mode).`,
+        });
+      }
     },
 
     async createTrip(name, city, startDate, endDate) {
@@ -490,7 +530,16 @@ export const useStore = create<StoreState>((set, get) => {
     },
 
     async deleteTrip(id) {
-      await get().repo.delete(id);
+      try {
+        await get().repo.delete(id);
+      } catch (e) {
+        // Never drop the trip from `trips` on a failed delete — that would
+        // make it look gone while it's still sitting in storage.
+        const message = e instanceof Error ? e.message : String(e);
+        bridgeLog("main: delete failed", { error: message });
+        set({ toast: `Delete failed — the trip has not been removed (${message}).` });
+        return;
+      }
       set((s) => ({
         trips: s.trips.filter((t) => t.id !== id),
         currentTrip: s.currentTrip?.id === id ? null : s.currentTrip,
@@ -510,7 +559,22 @@ export const useStore = create<StoreState>((set, get) => {
     async importTripJson(json) {
       try {
         const trip = await get().repo.importJson(json);
-        set((s) => ({ trips: [trip, ...s.trips], importError: null }));
+        set((s) => ({
+          // repo.importJson always assigns a fresh id (never trusts/keeps
+          // the file's own id — see localRepository.ts's importJson), so
+          // this should always be a brand-new trip, never one already in
+          // `trips`. Dedupe the same way `mutateTrip` does anyway: two
+          // in-memory list entries backed by a single Dexie row is exactly
+          // how `deleteTrip` can end up removing the wrong (or both) entries.
+          trips: s.trips.some((t) => t.id === trip.id)
+            ? s.trips.map((t) => (t.id === trip.id ? trip : t))
+            : [trip, ...s.trips],
+          importError: null,
+          // Always a copy now (fresh id) — say so, since a re-import of a
+          // file you previously exported would otherwise look like nothing
+          // happened.
+          toast: "Trip imported as a new copy",
+        }));
         return true;
       } catch (e) {
         set({ importError: `Invalid trip file: ${e instanceof Error ? e.message : String(e)}` });
@@ -747,7 +811,34 @@ export const useStore = create<StoreState>((set, get) => {
     setToast(message) {
       set({ toast: message });
     },
+
+    dismissToast(id) {
+      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+    },
   };
+});
+
+/**
+ * P1 #5 (additive, self-contained): every existing `toast` write above —
+ * whether through `setToast` or a direct `set({ toast: ... })` in solve/save
+ * error paths — remains untouched, including by this subscription: `toast`
+ * itself is left exactly as every existing call site (and every existing
+ * store test asserting on it directly) already expects. This subscription
+ * only *also* appends a queued `ToastEntry` to `toasts` whenever `toast`
+ * changes to a new non-null value, so multiple messages (e.g. a save failure
+ * followed by a solve failure) can be shown and dismissed independently
+ * instead of one clobbering the other. Errors are classified by message
+ * content and persist until dismissed; everything else is "info" and
+ * auto-dismisses (see ToastStack).
+ */
+let toastSeq = 0;
+function classifyToast(message: string): "info" | "error" {
+  return /\b(fail(ed)?|error|could not|invalid|unavailable)\b/i.test(message) ? "error" : "info";
+}
+useStore.subscribe((state, prev) => {
+  if (!state.toast || state.toast === prev.toast) return;
+  const entry: ToastEntry = { id: ++toastSeq, message: state.toast, kind: classifyToast(state.toast) };
+  useStore.setState((s) => ({ toasts: [...s.toasts, entry] }));
 });
 
 /** Convenience: parse an appointment time field, clamping to a default. */

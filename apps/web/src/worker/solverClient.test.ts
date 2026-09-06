@@ -15,6 +15,10 @@ import type { Itinerary } from "@app/domain";
  */
 let solverClientModule: typeof import("./solverClient");
 let closeSpy: ReturnType<typeof vi.spyOn>;
+/** Hoisted so the crash-handling tests below can dispatch "error"/
+ *  "messageerror" events directly onto the same port solverClient.ts holds
+ *  as its `worker`. */
+let mainSidePort: MessagePort;
 
 const sampleItinerary: Itinerary = {
   days: [],
@@ -23,7 +27,8 @@ const sampleItinerary: Itinerary = {
 };
 
 beforeAll(async () => {
-  const { port1: mainSidePort, port2: workerSidePort } = new MessageChannel();
+  const { port1, port2: workerSidePort } = new MessageChannel();
+  mainSidePort = port1;
   mainSidePort.start();
   workerSidePort.start();
 
@@ -198,6 +203,96 @@ describe("release-sequencing bookkeeping (the actual fix)", () => {
     expect(() => proxied!(sampleItinerary)).toThrow("caller's onDone blew up");
     expect(calls).toEqual([sampleItinerary]);
     await expect(fired).resolves.toBeUndefined();
+  });
+});
+
+describe("worker crash handling (onerror / onmessageerror) — item 5", () => {
+  // Without the `onerror`/`onmessageerror` wiring, a worker that dies outright
+  // (uncaught exception in worker global scope, OOM, ...) never causes the
+  // outstanding remote.solve()/remote.resolve() promise to settle — the
+  // worker's reply just never arrives. That's a real end-to-end shape
+  // (unlike the release-sequencing race below, which needs fake ports to be
+  // deterministic): dispatching a genuine "error"/"messageerror" `Event` on
+  // the same port solverClient.ts holds as `worker` and asserting the
+  // in-flight call's promise actually rejects proves the wiring is live, not
+  // just that the underlying helper functions are individually correct.
+
+  it("rejects an in-flight solve() call when the worker fires an 'error' event, instead of hanging forever", async () => {
+    const pending = solverClientModule.solverClient.solve({} as never, {});
+    mainSidePort.dispatchEvent(new Event("error"));
+    await expect(pending).rejects.toThrow(/worker/i);
+  });
+
+  it("rejects an in-flight resolve() call when the worker fires a 'messageerror' event", async () => {
+    const pending = solverClientModule.solverClient.resolve(
+      {} as never,
+      sampleItinerary,
+      { type: "full" } as never,
+      {},
+    );
+    mainSidePort.dispatchEvent(new Event("messageerror"));
+    await expect(pending).rejects.toThrow();
+  });
+
+  it("failPendingCalls rejects every currently in-flight call and clears pendingRejects (deterministic unit check)", () => {
+    const { failPendingCalls, pendingRejects } = solverClientModule.__testing;
+    pendingRejects.clear();
+    const seen: unknown[] = [];
+    pendingRejects.add((e) => seen.push(e));
+    pendingRejects.add((e) => seen.push(e));
+    expect(pendingRejects.size).toBe(2);
+
+    failPendingCalls(new Error("crashed"));
+
+    expect(seen).toHaveLength(2);
+    expect(seen.every((e) => e instanceof Error && e.message === "crashed")).toBe(true);
+    expect(pendingRejects.size).toBe(0); // cleared, so a later crash doesn't double-reject
+  });
+
+  it("guardCall settles normally on the happy path and removes itself from pendingRejects either way", async () => {
+    const { guardCall, pendingRejects } = solverClientModule.__testing;
+    pendingRejects.clear();
+    const result = await guardCall(Promise.resolve(sampleItinerary));
+    expect(result).toEqual(sampleItinerary);
+    expect(pendingRejects.size).toBe(0);
+
+    await expect(guardCall(Promise.reject(new Error("nope")))).rejects.toThrow("nope");
+    expect(pendingRejects.size).toBe(0);
+  });
+});
+
+describe("worker construction failure at module load — item 5", () => {
+  // `new Worker(...)` runs at MODULE SCOPE. Letting it throw would take down
+  // app boot before React ever renders, with no fallback — this proves the
+  // module itself still loads fine, and that solve()/resolve() reject
+  // clearly (rather than throwing synchronously or hanging) when there is no
+  // worker to talk to.
+  it("does not throw at import time, and solve()/resolve() reject with a clear error instead of hanging", async () => {
+    class ThrowingWorker {
+      constructor() {
+        throw new Error("failed to fetch worker chunk");
+      }
+    }
+    vi.stubGlobal("Worker", ThrowingWorker);
+    vi.resetModules();
+    try {
+      const freshModule = await import("./solverClient");
+      await expect(freshModule.solverClient.solve({} as never, {})).rejects.toThrow(
+        /failed to fetch worker chunk/,
+      );
+      await expect(
+        freshModule.solverClient.resolve({} as never, sampleItinerary, { type: "full" } as never, {}),
+      ).rejects.toThrow(/failed to fetch worker chunk/);
+    } finally {
+      // Restore the working fake worker in case anything else in this file
+      // (or a future test appended after this one) re-imports the module.
+      vi.stubGlobal("Worker", class {
+        constructor() {
+          return mainSidePort as unknown as object;
+        }
+      });
+      vi.resetModules();
+    }
   });
 });
 

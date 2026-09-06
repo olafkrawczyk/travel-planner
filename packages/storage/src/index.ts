@@ -1,4 +1,4 @@
-export { RepositoryError, type TripRepository } from "./repository";
+export { RepositoryError, type TripRepository, type ListResult } from "./repository";
 export { LocalRepository } from "./localRepository";
 export {
   DexieMatrixCache,

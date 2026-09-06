@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie";
-import { parseTrip, schemaVersion, type Trip } from "@app/domain";
-import { RepositoryError, type TripRepository } from "./repository";
+import { newTripId, parseTrip, schemaVersion, type Trip } from "@app/domain";
+import { RepositoryError, type TripRepository, type ListResult } from "./repository";
 
 /**
  * Local IndexedDB repository on Dexie. Every stored record carries
@@ -17,12 +17,17 @@ export class LocalRepository implements TripRepository {
     this.trips = this.db.table("trips");
   }
 
-  async list(): Promise<Trip[]> {
+  async list(): Promise<ListResult> {
     const rows = await this.trips.toArray();
-    return rows
-      .map((r) => safeParse(r.json))
-      .filter((t): t is Trip => t !== undefined)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const trips: Trip[] = [];
+    let failedCount = 0;
+    for (const r of rows) {
+      const t = safeParse(r.json);
+      if (t) trips.push(t);
+      else failedCount++; // corrupt row, or written by a newer/incompatible build
+    }
+    trips.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return { trips, failedCount };
   }
 
   async get(id: string): Promise<Trip | undefined> {
@@ -55,10 +60,18 @@ export class LocalRepository implements TripRepository {
   async importJson(json: string): Promise<Trip> {
     let trip: Trip;
     try {
-      trip = parseTrip(JSON.parse(json));
+      const raw = JSON.parse(json) as Record<string, unknown>;
+      // Always import under a fresh id — never trust (or keep) the id stored
+      // in the file. `put()` upserts by id, so re-importing a file you
+      // previously exported (or one someone else exported and handed you)
+      // would otherwise silently overwrite an existing stored trip with no
+      // confirmation. Mirrors the share-URL path (apps/web/src/App.tsx),
+      // which already does this for the same reason.
+      raw.id = newTripId();
+      trip = parseTrip(raw);
     } catch (err) {
       throw new RepositoryError(
-        "Import failed: file is not a valid trip (schema validation error). Existing data is unchanged.",
+        `Import failed: ${err instanceof Error ? err.message : "file is not a valid trip"}. Existing data is unchanged.`,
         err,
       );
     }

@@ -64,13 +64,14 @@ describe("LocalRepository", () => {
     const got = await repo.get("trip_1");
     expect(got).toEqual(t);
 
-    const list = await repo.list();
-    expect(list).toHaveLength(1);
-    expect(list[0]!.id).toBe("trip_1");
+    const { trips, failedCount } = await repo.list();
+    expect(trips).toHaveLength(1);
+    expect(trips[0]!.id).toBe("trip_1");
+    expect(failedCount).toBe(0);
 
     await repo.delete("trip_1");
     expect(await repo.get("trip_1")).toBeUndefined();
-    expect(await repo.list()).toHaveLength(0);
+    expect((await repo.list()).trips).toHaveLength(0);
   });
 
   it("returns undefined for a missing trip", async () => {
@@ -82,7 +83,7 @@ describe("LocalRepository", () => {
     await expect(repo.put(bad)).rejects.toThrow();
   });
 
-  it("exports JSON and imports it back equivalently", async () => {
+  it("exports JSON and imports it back under a fresh id (content otherwise equivalent)", async () => {
     const t = parseTrip(sampleTrip());
     await repo.put(t);
     const json = await repo.exportJson("trip_1");
@@ -90,13 +91,33 @@ describe("LocalRepository", () => {
 
     const other = new LocalRepository("import-db-" + Math.random());
     const imported = await other.importJson(json);
-    expect(imported).toEqual(t);
-    expect(await other.get("trip_1")).toEqual(t);
+    expect(imported.id).not.toBe(t.id); // never trusts the file's own id
+    expect({ ...imported, id: t.id }).toEqual(t); // everything else round-trips
+    expect(await other.get(t.id)).toBeUndefined();
+    expect(await other.get(imported.id)).toEqual(imported);
+  });
+
+  // Regression for the P0 finding: re-importing a file whose id collides
+  // with an already-stored trip must never overwrite it (put() upserts by
+  // id in Dexie, so keeping the file's id would silently clobber the
+  // existing row with no confirmation).
+  it("re-importing an exported file never clobbers the original stored trip", async () => {
+    const t = parseTrip(sampleTrip());
+    await repo.put(t);
+    const json = await repo.exportJson("trip_1");
+
+    const imported = await repo.importJson(json); // same repo/db as the original
+    expect(imported.id).not.toBe("trip_1");
+
+    const { trips } = await repo.list();
+    expect(trips).toHaveLength(2); // original + fresh-id copy, neither clobbered
+    expect(await repo.get("trip_1")).toEqual(t); // original untouched
+    expect(await repo.get(imported.id)).toEqual(imported);
   });
 
   it("rejects invalid import JSON with a clear error and leaves data unchanged", async () => {
     await repo.put(sampleTrip());
-    const before = await repo.list();
+    const before = (await repo.list()).trips;
 
     await expect(repo.importJson("not json")).rejects.toThrow(RepositoryError);
     await expect(repo.importJson("{\"schemaVersion\": 1}")).rejects.toThrow(RepositoryError);
@@ -105,7 +126,7 @@ describe("LocalRepository", () => {
     ).resolves.toBeTruthy(); // places: [] is schema-valid
 
     // The failed imports did not corrupt existing data.
-    expect(await repo.list()).toHaveLength(before.length + 1);
+    expect((await repo.list()).trips).toHaveLength(before.length + 1);
   });
 
   it("rejects import with an unsupported future schema version", async () => {
@@ -113,7 +134,43 @@ describe("LocalRepository", () => {
     await expect(repo.importJson(JSON.stringify(future))).rejects.toThrow(/schema version/);
   });
 
+  // Item 3: MAX_TRIP_DAYS is enforced in the schema (@app/domain) now, so
+  // every path into the store is covered uniformly — including import, which
+  // never called `validateTripLength` itself.
+  it("rejects importing a trip with more days than the schema's hard cap, with a readable message", async () => {
+    const base = parseTrip(sampleTrip("trip_toolong"));
+    const oversized = {
+      ...base,
+      days: Array.from({ length: 61 }, (_, i) => ({
+        ...base.days[0],
+        id: `d${i}`,
+        date: `2026-${String((i % 12) + 1).padStart(2, "0")}-${String((i % 28) + 1).padStart(2, "0")}`,
+      })),
+    };
+    const err = await repo.importJson(JSON.stringify(oversized)).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RepositoryError);
+    expect((err as Error).message).toContain("Trip too long");
+    expect((err as Error).message).not.toMatch(/"code":|"path":/); // not a raw ZodError dump
+  });
+
   it("exportJson throws for a missing trip", async () => {
     await expect(repo.exportJson("nope")).rejects.toThrow(RepositoryError);
+  });
+
+  // Item 4: a stored row that fails to parse/validate (corrupt, or written by
+  // a newer/incompatible build) must be signalled, not silently dropped.
+  it("list() signals unparseable rows via failedCount instead of silently omitting them", async () => {
+    const t = parseTrip(sampleTrip());
+    await repo.put(t);
+    // Bypass put()'s validation to write a genuinely unparseable row directly
+    // (e.g. corrupted JSON, or a shape no migration recognizes).
+    await (repo as unknown as { trips: { put(row: { id: string; json: string }): Promise<unknown> } }).trips.put({
+      id: "corrupt",
+      json: "{not valid json",
+    });
+
+    const { trips, failedCount } = await repo.list();
+    expect(trips.map((x) => x.id)).toEqual(["trip_1"]); // the corrupt row is excluded...
+    expect(failedCount).toBe(1); // ...but its loss is signalled, not silent
   });
 });
