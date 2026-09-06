@@ -1,0 +1,15 @@
+{
+  "name": "@app/geo",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@app/domain": "workspace:*",
+    "opening_hours": "^3.14.0"
+  }
+}

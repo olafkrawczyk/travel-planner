@@ -1,0 +1,185 @@
+
+:root {
+  /* Colors - Light Theme */
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f1f5f9;
+  --bg-surface-active: #e2e8f0;
+  
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-inverse: #ffffff;
+  
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-subtle: #eff6ff;
+  
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --danger-subtle: #fef2f2;
+  
+  --warning: #f59e0b;
+  --warning-subtle: #fffbeb;
+  
+  /* Badges / statuses */
+  --badge-bg: #f1f5f9;
+  --badge-text: #475569;
+  --badge-border: #e2e8f0;
+  
+  --badge-bg-success: #ecfdf5;
+  --badge-text-success: #065f46;
+  --badge-border-success: #a7f3d0;
+  
+  --badge-bg-info: #eff6ff;
+  --badge-text-info: #1e40af;
+  --badge-border-info: #bfdbfe;
+
+  --badge-bg-danger: #fef2f2;
+  --badge-text-danger: #991b1b;
+  --badge-border-danger: #fecaca;
+
+  /* Typography Scale */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.875rem; /* 14px */
+  --text-base: 1rem; /* 16px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.25rem; /* 20px */
+  --text-2xl: 1.5rem; /* 24px */
+  
+  /* Spacing Scale (4px ramp) */
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.25rem; /* 20px */
+  --space-6: 1.5rem; /* 24px */
+  --space-8: 2rem; /* 32px */
+  
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+  
+  /* Component specific */
+  --day-bg: var(--bg-surface);
+  --day-text: var(--text);
+  --day-border: var(--border-strong);
+
+  /* Day identity palette — a *qualitative/categorical* palette, not a
+   * sequential ramp: days are categories (day 7 isn't "more" than day 3), so
+   * unlike a load-bar or heatmap there is nothing for hue order to encode.
+   * All 12 steps hold CIE Lab L*=45 and near-constant chroma, spread across
+   * (almost) the full hue wheel — this is what makes it read as a designed
+   * qualitative set (ColorBrewer-qualitative / Tableau10-style) rather than
+   * either a rainbow or a single-hue-family ramp. Holding L* constant also
+   * means every step gets essentially the same WCAG luminance regardless of
+   * hue (contrast depends only on L*, not hue, in Lab) — vs-white contrast
+   * is 5.35-5.41:1 across all 12, so no step needed a special-cased fix for
+   * the classic "yellow/cyan reads lighter" problem.
+   * Trade made explicit: sRGB's gamut is much narrower in the cyan/blue
+   * region (roughly 195-240deg) than elsewhere at this lightness — max
+   * in-gamut chroma there is ~28-30 vs ~50-95 for the rest of the wheel.
+   * Rather than force that low chroma on several steps (which would have
+   * meant either < 15 dE between neighbours or abandoning that part of the
+   * wheel entirely), only day-6 sits in that trough, and its two neighbours
+   * (day-5, day-7) are pushed further away in hue than the ~30deg the other
+   * steps use, so day-6 alone is slightly less saturated than the rest for a
+   * documented physical reason, not an arbitrary one. Hue is also kept clear
+   * of the danger red hue (~31deg in Lab): closest day to danger is day-12
+   * at dE76=31.4, clearly a different colour, not a near-miss.
+   * Measured (all 66 pairs, light theme): minimum pairwise dE76 = 27.9
+   * (day-4/day-5), comfortably over the >=20 target (floor 15); five
+   * smallest pairs: day4-day5 27.9, day5-day6 27.9, day3-day4 28.0,
+   * day2-day3 28.1, day6-day7 28.2. See MapView.tsx / store.ts `dayColor()`
+   * for the consumer contract. */
+  --day-1: #a9520c;
+  --day-2: #84660d;
+  --day-3: #58740e;
+  --day-4: #157a3e;
+  --day-5: #15786a;
+  --day-6: #187391;
+  --day-7: #1d6db5;
+  --day-8: #2364db;
+  --day-9: #5352f6;
+  --day-10: #b01bd0;
+  --day-11: #c51b8e;
+  --day-12: #cd1b5e;
+
+  /* Map-only marker colour for home-base (hotel) places; distinct from every
+   * day colour and from every category. Constant across themes: it sits on
+   * the map's own (theme-independent) basemap tiles, not on app chrome. */
+  --marker-base: #111827;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #0f172a;
+    --bg-surface: #1e293b;
+    --bg-surface-hover: #334155;
+    --bg-surface-active: #475569;
+    
+    --border: #334155;
+    --border-strong: #475569;
+    
+    --text: #f8fafc;
+    --text-muted: #94a3b8;
+    --text-inverse: #000000;
+    
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-subtle: #1e3a8a;
+    
+    --danger: #ef4444;
+    --danger-hover: #f87171;
+    --danger-subtle: #7f1d1d;
+    
+    --warning: #f59e0b;
+    --warning-subtle: #78350f;
+    
+    --badge-bg: #334155;
+    --badge-text: #cbd5e1;
+    --badge-border: #475569;
+    
+    --badge-bg-success: #064e3b;
+    --badge-text-success: #a7f3d0;
+    --badge-border-success: #059669;
+    
+    --badge-bg-info: #1e3a8a;
+    --badge-text-info: #bfdbfe;
+    --badge-border-info: #1e40af;
+
+    --badge-bg-danger: #7f1d1d;
+    --badge-text-danger: #fecaca;
+    --badge-border-danger: #991b1b;
+
+    /* Same qualitative-palette method as the light theme (see :root above),
+     * re-solved at L*=68 so it pops against the dark app background and
+     * clears 4.5:1 against the black marker-number text (--text-inverse is
+     * #000 in this theme) — vs-black contrast is 8.56-8.63:1 across all 12,
+     * again essentially hue-independent because L* alone drives it. Same
+     * cyan/blue gamut trade as the light set: day-6 is the one step that
+     * sits in sRGB's narrower cyan/blue region and is slightly less
+     * saturated than its neighbours for that reason.
+     * Measured (all 66 pairs): minimum pairwise dE76 = 25.7 (day-9/day-10),
+     * over the >=20 target; five smallest pairs: day9-day10 25.7,
+     * day7-day8 25.8, day8-day9 25.8, day11-day12 27.5, day6-day7 27.8.
+     * Closest day to the danger hue is day-12 at dE76=36.2. */
+    --day-1: #fb8732;
+    --day-2: #cca01a;
+    --day-3: #8ab41b;
+    --day-4: #26be63;
+    --day-5: #27b9a4;
+    --day-6: #2ab4d4;
+    --day-7: #43adfa;
+    --day-8: #999efa;
+    --day-9: #ce89fa;
+    --day-10: #fa6cfa;
+    --day-11: #fa79c5;
+    --day-12: #fa8097;
+  }
+}

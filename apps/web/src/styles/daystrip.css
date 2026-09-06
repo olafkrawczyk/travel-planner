@@ -1,0 +1,124 @@
+/**
+ * Trip overview day strip (see DayStrip.tsx). Sits between the trip header
+ * and the split view, so it's naturally "pinned" — it isn't inside anything
+ * that scrolls vertically. At 12+ days it scrolls horizontally instead of
+ * shrinking tiles below a readable size (`min-width` below is the floor).
+ */
+.day-strip {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.day-strip-item {
+  flex: 1 1 76px;
+  min-width: 76px;
+  max-width: 128px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: none;
+  border: 1px solid transparent;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  align-items: stretch;
+  text-align: left;
+}
+
+.day-strip-item:hover {
+  background: var(--bg-surface-hover);
+}
+
+.day-strip-item.active {
+  background: var(--bg-surface-active);
+  border-color: var(--border-strong);
+}
+
+.day-strip-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.day-strip-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Reuses the exact badge look Timeline uses for its per-day identity marker
+ * (same class, same --day-accent contract via dayColor()) so a day reads as
+ * the same object in the strip as it does in the timeline and on the map. */
+.day-strip-top .day-number-badge {
+  width: var(--space-5);
+  height: var(--space-5);
+  min-width: var(--space-5);
+  font-size: 10px;
+}
+
+.day-strip-date {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The load bar: committed time (DayPlan.slackMin vs the day's own
+ * start–end window) as a fraction of that window. Deliberately a neutral
+ * accent fill for the normal case — the 12 day-identity hues stay reserved
+ * for *identity* (badge, left rule, map markers); reusing them here would
+ * make a fuller day look "more categorically day-7" instead of "more full",
+ * and would fight with the danger/warning states below on whichever day
+ * happens to land on a red- or amber-ish hue. */
+.day-strip-bar {
+  display: block;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.day-strip-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 0.2s ease;
+}
+
+.day-strip-status {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/*
+ * Empty vs overrun are opposite problems and must not share a color: an
+ * empty day is an open planning gap (nothing wrong, just unfinished —
+ * warning family, the same "worth a look" register as the stale-itinerary
+ * banner), while an overrun is the solver telling you a day doesn't fit —
+ * that's the one state allowed to use the danger family anywhere in this
+ * strip.
+ */
+.day-strip-item.empty .day-strip-bar {
+  background: none;
+  border: 1px dashed var(--warning);
+}
+.day-strip-item.empty .day-strip-status {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.day-strip-item.over .day-strip-bar {
+  background: var(--danger-subtle);
+}
+.day-strip-item.over .day-strip-fill {
+  background: var(--danger);
+}
+.day-strip-item.over .day-strip-status {
+  color: var(--danger);
+  font-weight: 600;
+}

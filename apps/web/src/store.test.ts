@@ -1,0 +1,505 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The store module instantiates the worker client (module-level `new Worker`)
+// and an IndexedDB-backed repository — both unavailable in the node test
+// environment, so mock them out.
+vi.mock("./worker/solverClient", () => ({
+  solverClient: {
+    solve: vi.fn(() => new Promise(() => {})),
+    resolve: vi.fn(() => new Promise(() => {})),
+  },
+}));
+vi.mock("@app/storage", () => ({
+  LocalRepository: class {
+    async put(): Promise<void> {}
+    async get(): Promise<undefined> {
+      return undefined;
+    }
+    async list(): Promise<never[]> {
+      return [];
+    }
+    async delete(): Promise<void> {}
+  },
+  // In-memory stand-in for the Dexie-backed OSRM matrix cache (node tests
+  // have no IndexedDB; the store module instantiates the cache eagerly).
+  DexieMatrixCache: class {
+    private map = new Map<string, unknown>();
+    async get(key: string): Promise<unknown> {
+      return this.map.get(key);
+    }
+    async put(entry: { key: string }): Promise<void> {
+      this.map.set(entry.key, entry);
+    }
+  },
+  matrixCacheKey: (coords: { lat: number; lng: number }[], profile: string, baseUrl: string) =>
+    `${baseUrl}|${profile}|${coords.map((c) => `${c.lat.toFixed(4)},${c.lng.toFixed(4)}`).join(";")}`,
+}));
+
+import type { Itinerary } from "@app/domain";
+import { LocalRepository } from "@app/storage";
+import { multiHotelSampleTrip, emptyTrip, dateRange, MAX_TRIP_DAYS } from "./tripFactory";
+import { tokyoHakoneSample } from "./samples/tokyo-hakone";
+import { staysFor, useStore, validateStays, type Stay } from "./store";
+import { withSplitAt } from "./stays";
+import { solverClient } from "./worker/solverClient";
+
+const emptyItinerary: Itinerary = {
+  days: [],
+  unscheduled: [],
+  stats: { totalTravelMin: 0, totalWaitMin: 0, score: 0 },
+};
+
+describe("openPlaceEditor", () => {
+  it("maps a null placeId WITH coords to editingPlaceId 'new' (map-click creation)", () => {
+    useStore.setState({ editingPlaceId: null, pendingCoords: null });
+    useStore.getState().openPlaceEditor(null, { lat: 35.68, lng: 139.76 });
+    expect(useStore.getState().editingPlaceId).toBe("new");
+    expect(useStore.getState().pendingCoords).toEqual({ lat: 35.68, lng: 139.76 });
+  });
+
+  it("treats a null placeId without coords as 'close the editor'", () => {
+    useStore.setState({ editingPlaceId: "new", pendingCoords: { lat: 1, lng: 2 } });
+    useStore.getState().openPlaceEditor(null);
+    expect(useStore.getState().editingPlaceId).toBeNull();
+    expect(useStore.getState().pendingCoords).toBeNull();
+  });
+
+  it("opens an existing place by id without pending coords", () => {
+    useStore.setState({ editingPlaceId: null, pendingCoords: null });
+    useStore.getState().openPlaceEditor("p1");
+    expect(useStore.getState().editingPlaceId).toBe("p1");
+    expect(useStore.getState().pendingCoords).toBeNull();
+  });
+});
+
+describe("toggleDayHidden", () => {
+  it("adds and removes day ids without touching other entries", () => {
+    useStore.setState({ hiddenDays: new Set(["d1"]) });
+    useStore.getState().toggleDayHidden("d2");
+    expect(useStore.getState().hiddenDays).toEqual(new Set(["d1", "d2"]));
+    useStore.getState().toggleDayHidden("d1");
+    expect(useStore.getState().hiddenDays).toEqual(new Set(["d2"]));
+  });
+});
+
+describe("focusDay", () => {
+  it("sets focusDayId (UI-only)", () => {
+    useStore.setState({ focusDayId: null });
+    useStore.getState().focusDay("d3");
+    expect(useStore.getState().focusDayId).toBe("d3");
+  });
+});
+
+describe("staysFor", () => {
+  it("derives a single stay for a single-hotel trip", () => {
+    const trip = emptyTrip("Test", dateRange("2026-04-01", "2026-04-03"));
+    const hotel = trip.places[0]!;
+    expect(staysFor(trip)).toEqual([{ hotelId: hotel.id, checkInDayIdx: 0, nights: 3 }]);
+  });
+
+  it("derives exactly 2 stays from the Tokyo → Hakone sample (day 3: wake Tokyo, sleep Hakone)", () => {
+    const trip = multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+    const hotels = trip.places.filter((p) => p.dwellMin === 0);
+    const [tokyo, hakone] = hotels as [typeof hotels[0], typeof hotels[0]];
+    const stays = staysFor(trip);
+    expect(stays).toEqual([
+      { hotelId: tokyo!.id, checkInDayIdx: 0, nights: 2 },
+      { hotelId: hakone!.id, checkInDayIdx: 2, nights: 3 },
+    ]);
+    // Check-in day semantics on the stored day: day 3 (index 2) wakes in the
+    // old hotel and sleeps in the new one.
+    expect(trip.days[2]!.baseStartId).toBe(tokyo!.id);
+    expect(trip.days[2]!.baseEndId).toBe(hakone!.id);
+  });
+
+  it("tolerates per-day baseStartId inconsistencies by grouping on baseEndId only", () => {
+    const trip = emptyTrip("Test", dateRange("2026-04-01", "2026-04-02"));
+    const hotel = trip.places[0]!;
+    trip.days[0]!.baseStartId = "somewhere-else"; // inconsistent wake-up base
+    expect(staysFor(trip)).toEqual([{ hotelId: hotel.id, checkInDayIdx: 0, nights: 2 }]);
+  });
+});
+
+describe("setStays", () => {
+  function tokyoHakoneTrip() {
+    return multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+  }
+
+  function hotelsOf(trip: ReturnType<typeof tokyoHakoneTrip>) {
+    const hotels = trip.places.filter((p) => p.dwellMin === 0);
+    return [hotels[0]!, hotels[1]!] as const; // [tokyo, hakone]
+  }
+
+  it("writes baseStartId/baseEndId per day from stays", () => {
+    const trip = tokyoHakoneTrip();
+    const [tokyo, hakone] = hotelsOf(trip);
+    useStore.setState({ currentTrip: trip, past: [], future: [] });
+    const stays: Stay[] = [
+      { hotelId: tokyo.id, checkInDayIdx: 0, nights: 2 },
+      { hotelId: hakone.id, checkInDayIdx: 2, nights: 3 },
+    ];
+    useStore.getState().setStays(stays);
+    const next = useStore.getState().currentTrip!;
+    const bases = next.days.map((d) => [d.baseStartId, d.baseEndId]);
+    expect(bases).toEqual([
+      [tokyo.id, tokyo.id], // day 1
+      [tokyo.id, tokyo.id], // day 2
+      [tokyo.id, hakone.id], // day 3 — check-in day: wake old, sleep new
+      [hakone.id, hakone.id], // day 4
+      [hakone.id, hakone.id], // day 5
+    ]);
+  });
+
+  it("round-trips: setStays(staysFor(trip)) leaves the bases unchanged", () => {
+    const trip = tokyoHakoneTrip();
+    useStore.setState({ currentTrip: trip, past: [], future: [] });
+    useStore.getState().setStays(staysFor(trip));
+    const next = useStore.getState().currentTrip!;
+    expect(next.days.map((d) => [d.baseStartId, d.baseEndId])).toEqual(
+      trip.days.map((d) => [d.baseStartId, d.baseEndId]),
+    );
+  });
+
+  it("rejects non-contiguous coverage with a toast and without mutating", () => {
+    const trip = tokyoHakoneTrip();
+    const [tokyo] = hotelsOf(trip);
+    useStore.setState({ currentTrip: trip, toast: null });
+    useStore.getState().setStays([{ hotelId: tokyo.id, checkInDayIdx: 1, nights: 4 }]);
+    expect(useStore.getState().toast).toBeTruthy();
+    expect(useStore.getState().currentTrip).toBe(trip); // untouched
+  });
+
+  it("rejects a stay whose total nights do not fill the trip", () => {
+    const trip = tokyoHakoneTrip();
+    const [tokyo] = hotelsOf(trip);
+    useStore.setState({ currentTrip: trip, toast: null });
+    useStore.getState().setStays([{ hotelId: tokyo.id, checkInDayIdx: 0, nights: 3 }]);
+    expect(useStore.getState().toast).toBeTruthy();
+    expect(useStore.getState().currentTrip).toBe(trip);
+  });
+
+  it("validateStays reports unknown hotels", () => {
+    const trip = tokyoHakoneTrip();
+    expect(validateStays([{ hotelId: "nope", checkInDayIdx: 0, nights: 5 }], trip)).toBeTruthy();
+    const [tokyo, hakone] = hotelsOf(trip);
+    expect(
+      validateStays(
+        [
+          { hotelId: tokyo.id, checkInDayIdx: 0, nights: 3 },
+          { hotelId: hakone.id, checkInDayIdx: 3, nights: 2 },
+        ],
+        trip,
+      ),
+    ).toBeNull();
+  });
+
+  it("round-trips a split into two same-hotel stays — a plain baseEndId-only derive would merge them back", () => {
+    const trip = tokyoHakoneTrip();
+    const [tokyo, hakone] = hotelsOf(trip);
+    useStore.setState({ currentTrip: trip, past: [], future: [] });
+    // The Tokyo stay (days 0-1) is split at day 1, giving two adjacent
+    // same-hotel stays; the Hakone stay (day 2 onward) is untouched.
+    const split = withSplitAt(staysFor(trip), 1, trip.days.length);
+    expect(split).toEqual([
+      { hotelId: tokyo.id, checkInDayIdx: 0, nights: 1 },
+      { hotelId: tokyo.id, checkInDayIdx: 1, nights: 1 },
+      { hotelId: hakone.id, checkInDayIdx: 2, nights: 3 },
+    ]);
+    useStore.getState().setStays(split);
+    const next = useStore.getState().currentTrip!;
+    expect(staysFor(next)).toEqual(split);
+  });
+});
+
+describe("addHotelForStay", () => {
+  function tokyoHakoneTrip() {
+    return multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+  }
+
+  it("creates a hotel place and assigns it to the given stay in one undoable mutation", () => {
+    const trip = tokyoHakoneTrip();
+    const placesBefore = trip.places.length;
+    useStore.setState({ currentTrip: trip, past: [], future: [] });
+    const id = useStore.getState().addHotelForStay(1, "New Hakone Inn");
+    expect(id).toBeTruthy();
+    const next = useStore.getState().currentTrip!;
+    expect(next.places).toHaveLength(placesBefore + 1);
+    const hotel = next.places.find((p) => p.id === id);
+    expect(hotel?.category).toBe("hotel");
+    expect(hotel?.name).toBe("New Hakone Inn");
+    expect(staysFor(next)[1]?.hotelId).toBe(id); // assigned to the second stay
+    // One undo entry covers both the place creation and the stay reassignment.
+    expect(useStore.getState().past).toEqual([trip]);
+  });
+
+  it("defaults the hotel's name when none is given", () => {
+    const trip = tokyoHakoneTrip();
+    useStore.setState({ currentTrip: trip, past: [], future: [] });
+    const id = useStore.getState().addHotelForStay(0);
+    const hotel = useStore.getState().currentTrip!.places.find((p) => p.id === id);
+    expect(hotel?.name).toBe("New hotel (edit me)");
+  });
+
+  it("returns null and does nothing when there is no current trip", () => {
+    useStore.setState({ currentTrip: null, past: [], future: [] });
+    expect(useStore.getState().addHotelForStay(0)).toBeNull();
+    expect(useStore.getState().past).toEqual([]);
+  });
+});
+
+describe("deferred solving (dirty / pendingChanges / regenerate)", () => {
+  function tokyoHakoneTrip() {
+    return multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // mutateTrip's own no-op guard compares the produced trip by reference;
+    // an empty recipe (dragToDay's) only changes `updatedAt`, so the clock
+    // must tick between creating the trip and mutating it or the two
+    // timestamps can land in the same millisecond and immer returns the
+    // trip unchanged, masking the solve call these tests assert on.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-01T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Advance the fake clock so the next mutateTrip's `updatedAt` differs. */
+  function tick() {
+    vi.setSystemTime(new Date(Date.now() + 1000));
+  }
+
+  it("a deferred edit (raisePriority) marks the trip dirty and does not solve", () => {
+    const trip = tokyoHakoneTrip();
+    const placeId = trip.places[0]!.id;
+    useStore.setState({
+      currentTrip: trip,
+      itinerary: emptyItinerary,
+      past: [],
+      future: [],
+      dirty: false,
+      pendingChanges: 0,
+      solving: false,
+    });
+    useStore.getState().raisePriority(placeId);
+    const state = useStore.getState();
+    expect(state.dirty).toBe(true);
+    expect(state.pendingChanges).toBe(1);
+    expect(solverClient.solve).not.toHaveBeenCalled();
+    expect(solverClient.resolve).not.toHaveBeenCalled();
+  });
+
+  it("a dragToDay edit solves immediately (incremental resolve) when not dirty", () => {
+    const trip = tokyoHakoneTrip();
+    const placeId = trip.places[0]!.id;
+    const dayId = trip.days[0]!.id;
+    useStore.setState({
+      currentTrip: trip,
+      itinerary: emptyItinerary,
+      past: [],
+      future: [],
+      dirty: false,
+      pendingChanges: 0,
+      solving: false,
+    });
+    tick();
+    useStore.getState().mutateTrip(() => {}, { type: "dragToDay", placeId, dayId });
+    expect(solverClient.resolve).toHaveBeenCalledTimes(1);
+    expect(solverClient.solve).not.toHaveBeenCalled();
+    expect(useStore.getState().dirty).toBe(false);
+  });
+
+  it("a dragToDay edit while already dirty does a FULL solve (not resolve) and clears dirty", () => {
+    const trip = tokyoHakoneTrip();
+    const placeId = trip.places[0]!.id;
+    const dayId = trip.days[0]!.id;
+    useStore.setState({
+      currentTrip: trip,
+      itinerary: emptyItinerary,
+      past: [],
+      future: [],
+      dirty: true,
+      pendingChanges: 3,
+      solving: false,
+    });
+    tick();
+    useStore.getState().mutateTrip(() => {}, { type: "dragToDay", placeId, dayId });
+    expect(solverClient.solve).toHaveBeenCalledTimes(1);
+    expect(solverClient.resolve).not.toHaveBeenCalled();
+    const state = useStore.getState();
+    expect(state.dirty).toBe(false);
+    expect(state.pendingChanges).toBe(0);
+  });
+
+  it("regenerate() runs a full solve and clears dirty state", () => {
+    const trip = tokyoHakoneTrip();
+    useStore.setState({
+      currentTrip: trip,
+      itinerary: null,
+      past: [],
+      future: [],
+      dirty: true,
+      pendingChanges: 5,
+      solving: false,
+    });
+    useStore.getState().regenerate();
+    expect(solverClient.solve).toHaveBeenCalledTimes(1);
+    const state = useStore.getState();
+    expect(state.dirty).toBe(false);
+    expect(state.pendingChanges).toBe(0);
+  });
+
+  it("regenerate() is a no-op with no current trip", () => {
+    useStore.setState({ currentTrip: null, dirty: false, pendingChanges: 0, solving: false });
+    useStore.getState().regenerate();
+    expect(solverClient.solve).not.toHaveBeenCalled();
+  });
+
+  it("undo() marks dirty and does not solve", () => {
+    const trip = tokyoHakoneTrip();
+    const previous = tokyoHakoneTrip();
+    useStore.setState({
+      currentTrip: trip,
+      itinerary: emptyItinerary,
+      past: [previous],
+      future: [],
+      dirty: false,
+      pendingChanges: 0,
+      solving: false,
+    });
+    useStore.getState().undo();
+    const state = useStore.getState();
+    expect(state.dirty).toBe(true);
+    expect(state.currentTrip).toBe(previous);
+    expect(solverClient.solve).not.toHaveBeenCalled();
+    expect(solverClient.resolve).not.toHaveBeenCalled();
+  });
+
+  it("undo() clears a stuck `solving` flag from an in-flight solve it invalidates", () => {
+    // Regression: undo()/redo() bump resolveCounter to invalidate the
+    // in-flight solve, but that solve's onDone is guarded by
+    // `call === resolveCounter` and so will never fire to clear `solving`.
+    // If undo() doesn't clear it itself, the header spinner spins forever
+    // and the solving-gated Regenerate button is stuck disabled.
+    const trip = tokyoHakoneTrip();
+    const previous = tokyoHakoneTrip();
+    useStore.setState({
+      currentTrip: trip,
+      itinerary: emptyItinerary,
+      past: [previous],
+      future: [],
+      dirty: false,
+      pendingChanges: 0,
+      solving: true, // a solve is "in flight" when undo is invoked
+    });
+    useStore.getState().undo();
+    const state = useStore.getState();
+    expect(state.solving).toBe(false);
+    expect(state.dirty).toBe(true);
+  });
+});
+
+/** A repo double whose `put` always rejects — for exercising `persist`'s
+ *  error path without touching real storage. */
+function failingRepo(message: string) {
+  return {
+    put: vi.fn(async () => {
+      throw new Error(message);
+    }),
+    get: vi.fn(async () => undefined),
+    list: vi.fn(async () => []),
+    delete: vi.fn(async () => {}),
+  };
+}
+
+describe("persist error handling (save status)", () => {
+  it("a failing repo.put leaves the store in the save-error state and sets a toast, without an unhandled rejection", async () => {
+    const trip = multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+    const repo = failingRepo("quota exceeded");
+    useStore.setState({
+      currentTrip: trip,
+      repo: repo as unknown as ReturnType<typeof useStore.getState>["repo"],
+      toast: null,
+      saveState: "idle",
+      saveError: null,
+      past: [],
+      future: [],
+    });
+
+    // mutateTrip fires persist() with `void` — if persist ever rethrows this
+    // becomes an unhandled rejection instead of surfacing here; asserting the
+    // call itself doesn't throw only proves the synchronous part is safe, so
+    // the real proof is the awaited state below settling into "error" rather
+    // than hanging or crashing the process via an unhandled rejection.
+    expect(() =>
+      useStore.getState().mutateTrip((draft) => {
+        draft.name = "Renamed while offline";
+      }),
+    ).not.toThrow();
+
+    await vi.waitFor(() => {
+      expect(useStore.getState().saveState).toBe("error");
+    });
+    expect(repo.put).toHaveBeenCalled();
+    expect(useStore.getState().saveError).toContain("quota exceeded");
+    expect(useStore.getState().toast).toContain("quota exceeded");
+    // The trip edit itself still applies in memory even though it can't be saved.
+    expect(useStore.getState().currentTrip?.name).toBe("Renamed while offline");
+  });
+
+  it("a normal save still ends in the saved state", async () => {
+    const trip = multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+    useStore.setState({
+      currentTrip: trip,
+      repo: new LocalRepository(),
+      toast: null,
+      saveState: "idle",
+      saveError: null,
+      past: [],
+      future: [],
+    });
+
+    useStore.getState().mutateTrip((draft) => {
+      draft.name = "Renamed";
+    });
+
+    await vi.waitFor(() => {
+      expect(useStore.getState().saveState).toBe("saved");
+    });
+    expect(useStore.getState().saveError).toBeNull();
+  });
+});
+
+describe("createTrip length cap", () => {
+  it("refuses a range longer than MAX_TRIP_DAYS with a toast and creates no trip", async () => {
+    useStore.setState({ trips: [], currentTrip: null, toast: null, repo: new LocalRepository() });
+    const tripsBefore = useStore.getState().trips;
+
+    // Empty city skips geocoding entirely, so this returns as soon as the
+    // length guard trips — no network call, no toast override.
+    await useStore.getState().createTrip("Too long", "", "2026-01-01", "2027-06-01");
+
+    const state = useStore.getState();
+    expect(state.toast).toContain("Trip too long");
+    expect(state.toast).toContain(String(MAX_TRIP_DAYS));
+    expect(state.trips).toBe(tripsBefore); // unchanged
+    expect(state.currentTrip).toBeNull();
+  });
+
+  it("accepts a range at exactly MAX_TRIP_DAYS", async () => {
+    useStore.setState({ trips: [], currentTrip: null, toast: null, repo: new LocalRepository() });
+    const dates = Array.from({ length: MAX_TRIP_DAYS }, (_, i) =>
+      new Date(Date.UTC(2026, 0, 1) + i * 86_400_000).toISOString().slice(0, 10),
+    );
+    await useStore
+      .getState()
+      .createTrip("Exactly max", "", dates[0]!, dates[dates.length - 1]!);
+
+    const state = useStore.getState();
+    expect(state.toast).not.toContain("Trip too long");
+    expect(state.currentTrip?.days).toHaveLength(MAX_TRIP_DAYS);
+  });
+});

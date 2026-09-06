@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/domain" },
+    { "path": "packages/geo" },
+    { "path": "packages/solver" },
+    { "path": "packages/storage" },
+    { "path": "apps/web" }
+  ]
+}

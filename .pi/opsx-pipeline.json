@@ -1,0 +1,5 @@
+{
+	"workerModel": "openrouter/z-ai/glm-5.3-flash",
+	"workerTimeoutMs": 1200000,
+	"workerTools": ["read", "bash", "edit", "write", "grep", "find", "ls"]
+}

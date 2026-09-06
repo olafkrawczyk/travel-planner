@@ -1,0 +1,58 @@
+
+.stays-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+}
+.stays-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: var(--space-1) 0;
+  cursor: pointer;
+  color: var(--text);
+}
+.stays-header h3 { margin: 0; font-size: var(--text-base); }
+.stays-coverage {
+  display: flex;
+  height: 1.4rem;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  margin: var(--space-1) 0 var(--space-2);
+}
+.stays-coverage-seg {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Background colour is set inline per segment (see StaysPanel.tsx) from
+   * the day-identity ramp, indexed by stay order — that's what makes
+   * consecutive stays tellable apart. --text-inverse pairs correctly with
+   * every step of that ramp in both themes (see MapView/tokens.css). */
+  color: var(--text-inverse);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.stays-coverage-seg + .stays-coverage-seg { border-left: 2px solid var(--bg-surface); }
+.stays-coverage-seg .checkin-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--bg-surface);
+}
+.stays-list { list-style: none; margin: 0 0 var(--space-1); padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.stay-row { display: flex; align-items: center; gap: var(--space-2); }
+.stay-row select { min-width: 0; flex: 1; }
+.stay-field { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); color: var(--text-muted); }
+.stay-field input[type="number"] { width: 3.5rem; }
+.stays-actions { display: flex; align-items: center; gap: var(--space-2); }
+.stay-fixed { font-size: var(--text-sm); color: var(--text); padding: var(--space-1); }

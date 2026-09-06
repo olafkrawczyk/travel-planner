@@ -1,0 +1,270 @@
+
+button {
+  font: inherit;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+button:hover:not(:disabled) { border-color: var(--accent); background: var(--bg-surface-hover); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.danger { color: var(--danger); }
+
+input, select, textarea {
+  font: inherit;
+  padding: var(--space-2) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  width: 100%;
+  background: var(--bg-surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-sm); }
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+.error-banner {
+  border: 1px solid var(--danger);
+  background: var(--danger-subtle);
+  color: var(--danger);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0;
+  font-size: var(--text-sm);
+}
+
+.solve-banner {
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+.stale-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--warning-subtle);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+.stale-banner button { flex-shrink: 0; }
+
+.toast {
+  position: fixed;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg-app);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-4);
+  z-index: 100;
+  font-size: var(--text-sm);
+}
+
+/* Regenerate */
+.regenerate.dirty {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-inverse);
+  font-weight: 600;
+}
+.regenerate.dirty:hover:not(:disabled) { border-color: var(--accent-hover); opacity: 0.9; }
+
+/* Modals */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: var(--space-4);
+}
+.modal { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: var(--space-2); max-height: 90dvh; overflow: auto; background: var(--bg-app); border-radius: var(--radius-lg); padding: var(--space-4); }
+.modal h2 { margin: 0; }
+
+/* Dev Panel */
+.dev-panel {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  width: 340px;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  z-index: 60;
+  background: var(--bg-surface);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+.dev-panel h3 { margin: 0; display: flex; align-items: center; justify-content: space-between; font-size: var(--text-lg); }
+.dev-panel .row label { flex: 1; min-width: 90px; }
+
+.save-status { white-space: nowrap; font-size: var(--text-xs); }
+.save-status.save-error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* First-run pitch (TripList, no trips yet): what the app does in one line,
+ * with the sample trips promoted to the most prominent control on the
+ * screen — for a first-time visitor they're a far lower-friction way in
+ * than filling out the creation form below. Gone entirely once a trip
+ * exists (see TripList.tsx) so it never competes with a returning user's
+ * own trip list. */
+.first-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+.first-run-pitch {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--text);
+  max-width: 56ch;
+}
+.first-run-or {
+  margin: 0;
+}
+.sample-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+.sample-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  text-align: left;
+  cursor: pointer;
+}
+.sample-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-surface-hover);
+}
+.sample-card strong {
+  font-size: var(--text-base);
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-full);
+  padding: 2px 8px;
+  border: 1px solid var(--badge-border);
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  white-space: nowrap;
+  font-weight: 500;
+}
+.badge-success {
+  background: var(--badge-bg-success);
+  color: var(--badge-text-success);
+  border-color: var(--badge-border-success);
+}
+.badge-info {
+  background: var(--badge-bg-info);
+  color: var(--badge-text-info);
+  border-color: var(--badge-border-info);
+}
+.badge-danger {
+  background: var(--badge-bg-danger);
+  color: var(--badge-text-danger);
+  border-color: var(--badge-border-danger);
+}
+.badge-warning {
+  background: var(--warning-subtle);
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+/*
+ * Empty-day visual (Timeline.tsx renders `.day-empty` for a day with no
+ * stops — that component is out of scope for this change, so this overrides
+ * its look only, via specificity rather than import order: two classes here
+ * beats timeline.css's plain `.day-empty` regardless of which stylesheet
+ * loads later). Turns the bare hint line into the same dashed, warning-toned
+ * "planning gap" box the day strip uses for an empty day (DayStrip.tsx /
+ * daystrip.css), so the two read as the same state rather than one being
+ * styled and the other forgotten.
+ */
+.day-section .day-empty {
+  margin: var(--space-2) var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--warning);
+  border-radius: var(--radius-md);
+  background: var(--warning-subtle);
+  color: var(--text);
+}
+
+.time-input-inline {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--font-sm);
+  cursor: pointer;
+  padding: 0;
+}
+.time-input-inline:hover {
+  color: var(--text);
+}
+.time-input-inline::-webkit-calendar-picker-indicator {
+  display: none;
+}
+.time-sep {
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+
+.day-isolate-btn {
+  margin-left: auto;
+  font-size: 0.9em;
+  padding: 2px;
+  opacity: 0.5;
+}
+.day-isolate-btn:hover {
+  opacity: 1;
+}
+
+.car-only-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-right: var(--space-3);
+  margin-left: auto;
+}
+.car-only-toggle:hover {
+  color: var(--text);
+}

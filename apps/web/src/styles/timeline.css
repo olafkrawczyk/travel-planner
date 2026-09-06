@@ -1,0 +1,266 @@
+
+.timeline-pane { overflow-y: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); background: var(--bg-app); }
+
+.timeline > .day-section { animation: fade-in 0.35s ease; }
+@keyframes fade-in { from { opacity: 0.4; } to { opacity: 1; } }
+
+/**
+ * Day identity: each `.day-section` gets `--day-accent` set inline
+ * (Timeline.tsx calls the shared `dayColor(dayIndex)` from the store, the
+ * same helper the map uses for that day's markers/route, so the two views
+ * read as one instrument). It drives three small, saturated surfaces —
+ * the section's left rule, the day-number badge and the track's connecting
+ * spine — deliberately never a full section/header background, which is
+ * the loud treatment this replaced. Every consumer falls back to the old
+ * neutral tokens so the section still looks right before `--day-accent`
+ * is set (e.g. mid-rollout of the palette).
+ */
+.day-section {
+  border: 1px solid var(--border);
+  border-left-width: 6px;
+  border-left-color: var(--day-accent, var(--day-border));
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  margin-bottom: var(--space-3);
+  overflow: hidden;
+}
+.day-section.drop-active { outline: 2px dashed var(--accent); }
+.day-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--day-text);
+  background: var(--day-bg);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.day-header h3 { margin: 0; display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-base); font-weight: 600; }
+.day-header .date { font-weight: 400; color: var(--text-muted); font-size: var(--text-sm); }
+.day-header .icon-btn { background: var(--bg-surface); border-color: var(--border); }
+.day-header .icon-btn.active { background: var(--bg-surface-active); }
+.day-times { font-size: var(--text-sm); color: var(--text-muted); }
+
+.day-number-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  min-width: var(--space-6);
+  border-radius: var(--radius-full);
+  background: var(--day-accent, var(--day-border));
+  color: var(--text-inverse);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.day-settings {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface-hover);
+}
+.day-empty { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
+/* Text-styled, not a bordered button — the empty state is a quiet suggestion
+ * (see the day-empty JSX comment in Timeline.tsx), so the regenerate control
+ * has to read as "part of the sentence" rather than a competing CTA. Same
+ * inline-button pattern as `.leg-minutes` below. */
+.day-empty-action {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+.day-empty-action:disabled { color: var(--text-muted); text-decoration: none; cursor: default; }
+.day-footnote { padding: var(--space-1) var(--space-3) var(--space-2); margin: 0; font-size: var(--text-xs); color: var(--text-muted); }
+
+.timeline-track {
+  position: relative;
+  margin: var(--space-3) var(--space-3) var(--space-5);
+}
+
+.track-end-boundary {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 2px dashed var(--danger);
+  z-index: 0;
+  pointer-events: none;
+}
+.track-end-boundary .boundary-text {
+  position: absolute;
+  right: 0;
+  top: -20px;
+  color: var(--danger);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  background: var(--bg-surface);
+  padding: 0 var(--space-1);
+}
+
+.track-blocks {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.track-group {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Block sizing: Timeline.tsx sets each block's `height` in pixels, already
+ * floored to a legible minimum per block type (see MIN_STOP_PX / MIN_LEG_PX
+ * / MIN_WAIT_PX there) — so every block, however short its real duration,
+ * is always tall enough to hold one row of its content. Every block below
+ * centers its content with flexbox rather than an absolute-position/
+ * transform hack, so that guarantee holds at any height without needing to
+ * know the content's exact pixel size up front.
+ */
+
+.track-stop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-left: 24px;
+  cursor: grab;
+  box-sizing: border-box;
+}
+
+.track-stop.hovered, .track-stop:hover {
+  background: var(--bg-surface-hover);
+}
+
+.track-stop-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.track-stop-content .spacer { flex: 1 1 auto; }
+
+.stop-number {
+  flex: none;
+  width: var(--space-6);
+  height: var(--space-6);
+  min-width: var(--space-6);
+  border-radius: var(--radius-full);
+  color: var(--text-inverse);
+  background: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.stop-name {
+  border: none;
+  background: none;
+  padding: 0;
+  font-weight: 600;
+  text-align: left;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+/* Scoped to the track (not the shared .stop-name used in the unscheduled
+ * tray): a long place name shrinks and truncates instead of pushing the
+ * times/pin/move controls out of the block or overlapping them. */
+.track-stop-content .stop-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stop-times { flex: none; font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
+
+.icon-btn { padding: var(--space-1) var(--space-2); font-size: var(--text-sm); }
+.icon-btn.active { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); }
+.move-menu { width: auto; font-size: var(--text-xs); padding: var(--space-1); }
+.track-stop-content .icon-btn,
+.track-stop-content .move-menu {
+  flex: none;
+}
+
+.leg-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.track-leg {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 24px;
+}
+.track-leg::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  /* The day's colour spine: the same connecting line runs the full height
+   * of the day's stops, tying every leg back to this day's identity. */
+  background: var(--day-accent, var(--border-strong));
+}
+.track-leg-content {
+  z-index: 2;
+  background: var(--bg-surface);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+
+.track-wait {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: 24px;
+  padding: 0 var(--space-2);
+  background: var(--warning-subtle);
+  border-left: 2px solid var(--warning);
+}
+.leg-minutes { border: none; background: none; padding: 0; color: var(--text-muted); text-decoration: underline dotted; font-size: var(--text-sm); }
+.leg-edit { display: flex; align-items: center; gap: var(--space-1); }
+.leg-edit input { width: 70px; }
+
+
+.gmaps-link { font-size: var(--text-xs); margin-left: auto; color: var(--accent); }
+
+/* The "all fits" confirmation (replaces the tray when there is nothing
+ * unscheduled): deliberately just muted `.hint` text with no box, border or
+ * warning/danger tone — it's a success state, and must stay quieter than the
+ * tray it replaces rather than reusing that tray's alert-toned chrome. */
+.unscheduled-fit { padding: var(--space-2) var(--space-3); }
+
+.unscheduled-tray {
+  background: var(--warning-subtle);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+}
+.unscheduled-tray h3 { margin: 0 0 var(--space-2); font-size: var(--text-base); color: var(--warning); }
+.unscheduled-tray ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.unscheduled-tray li { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.unscheduled-tray .explanation { flex-basis: 100%; margin: 0; font-size: var(--text-sm); color: var(--text-muted); }
+.unscheduled-tray .unscheduled-actions { display: flex; align-items: center; gap: var(--space-1); }
+
+.day-bases-info { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--text-muted); }

@@ -1,0 +1,20 @@
+# Design: fix-solve-hang-and-start-city
+
+## Root causes (verified)
+
+1. **Solve hang**: `apps/web/src/worker/solverClient.ts` passes `onProgress`/`onDone` as plain functions inside the Comlink request object. Comlink does NOT auto-proxy functions — structured clone throws `DataCloneError`, the worker call never happens, and `store.ts` `requestSolve` has no rejection handler (`undo`/`redo` have `.catch`, `requestSolve` does not), so `solving` stays `true` forever. Fix: wrap callbacks with `Comlink.proxy()` and add rejection handling to `requestSolve` that clears `solving` and surfaces a toast.
+2. **Search etiquette/UX**: `SearchBox` runs an effect per keystroke; each call enqueues into the client debouncer, so a burst produces one fetch per keystroke in the trailing batch. Fix: debounce the query string in the component (e.g. 300 ms) and only then call `photon.search`; keep the client debounce as a second layer. Add an `error` state shown when the promise rejects.
+3. **Hardcoded Tokyo base**: `tripFactory.emptyTrip` hardcodes the hotel at Tokyo Station coordinates. Fix: `createTrip(name, city, start, end)` in the store geocodes the city via `PhotonClient` (single non-debounced lookup is acceptable — one request per trip creation) and passes coords to `emptyTrip(name, dates, baseCoords)`. On failure: create the trip anyway with the previous default and set a toast telling the user to set the base manually. Map initial center can stay as-is since it already recenters onto the first places.
+4. **Null number in worker** (hash-prefixed console error): a zod-style "Expected value to be of type number, but found null" raised inside the solver worker. Most likely sources: PlaceEditor numeric inputs (`Number("")` → 0 is fine, but empty lat/lng states could be NaN/null after round-trips) or a base/`TravelOverride.minutes` that is null in stored data from an earlier buggy save. Fix at the source AND add defensive validation at the solver input boundary that names the offending place id in the error message.
+5. **Marker UX**: markers currently use `el.title` (slow native tooltip) and per-day colours only. Add a fast custom hover tooltip/popup showing the place name, and switch marker fill to a category palette with the day number rendered as a readable badge inside the marker; keep the base marker distinct (existing `.base` styling).
+6. **Worker logging**: add a tiny logger module (e.g. `apps/web/src/worker/log.ts`) with a `solverLog` flag (persist in localStorage or the dev-panel Flags); wrap both ends of the Comlink boundary to log `solve/resolve` calls (trip id, place/day counts), each `onProgress`/`onDone` delivery (travel/wait/score), and errors. Keep logging out of hot paths when disabled.
+7. **Clone-hardening (defensive)**: the observed symptom (new store logs present, yet a plain function reaches `postMessage`) is consistent with a stale pre-bundled `comlink` (per-module Symbol marker mismatch). Beyond cache-clearing guidance, harden the bridge structurally: pass callbacks as **top-level proxied arguments** rather than nested inside a request object (Comlink's proxy handling of top-level args is the best-supported path), and keep the request object itself pure data.
+8. **Right-click add**: MapLibre fires `contextmenu` with `lngLat`; prevent the browser default, render a small absolutely-positioned menu at the cursor with "Add place here", which calls the same `openPlaceEditor(null, coords)` path as click-to-add. Close on map click, menu action, or Escape.
+
+## Constraints
+
+- No schema changes: the base is an ordinary `Place`; starting city only affects creation-time coordinates.
+- `TripList` form gains one required text input; keep it minimal.
+- Keep deterministic seed behavior unchanged.
+- Add/adjust tests where cheap (e.g. tripFactory accepting coords; store requestSolve rejection path if testable without heavy worker mocks — acceptable to skip worker-mock test if it requires new dev dependencies; prefer a small unit test of a wrapped helper).
+- `pnpm build` and `pnpm test` must stay green.
