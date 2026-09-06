@@ -1,9 +1,15 @@
 import { useState } from "react";
-import type { Category, Place, TimeWindow } from "@app/domain";
+import type { Category, Place } from "@app/domain";
 import { newPlaceId } from "@app/domain";
-import { OverpassClient, expandOpeningHours } from "@app/geo";
 import { appointmentStart, useStore } from "../store";
 import { baseUsage, normalizePlace } from "../places";
+import {
+  OpeningHoursEditor,
+  buildOpeningHoursFields,
+  deriveOpeningHoursLocalState,
+  type OpeningHoursLocalState,
+} from "./OpeningHoursEditor";
+import { OpeningHoursOsmReview } from "./OpeningHoursOsmReview";
 
 const CATEGORIES: Category[] = [
   "museum",
@@ -75,6 +81,7 @@ export function PlaceEditor() {
       place={existing}
       coords={existing ? { lat: existing.lat, lng: existing.lng } : pendingCoords!}
       days={trip.days}
+      timezone={trip.timezone}
       existingRegions={existingRegions}
       onClose={() => openPlaceEditor(null)}
       onSave={(p) => {
@@ -132,20 +139,22 @@ function PlaceEditorInner(props: {
   place?: Place;
   coords: { lat: number; lng: number };
   days: { id: string; date: string }[];
+  timezone: string;
   existingRegions: string[];
   onClose(): void;
   onSave(place: Place): void;
   onDelete?(): void;
 }) {
-  const { place, coords, days, existingRegions, onClose, onSave, onDelete } = props;
+  const { place, coords, days, timezone, existingRegions, onClose, onSave, onDelete } = props;
   const [name, setName] = useState(place?.name ?? "");
   const [category, setCategory] = useState<Category>(place?.category ?? "other");
   const [dwell, setDwell] = useState(place?.dwellMin ?? 60);
   const [priority, setPriority] = useState<1 | 2 | 3>(place?.priority ?? 2);
   const [appointmentDay, setAppointmentDay] = useState(place?.appointment?.dayId ?? "");
   const [appointmentTime, setAppointmentTime] = useState(place?.appointment?.start ?? "14:00");
-  const [openingHours, setOpeningHours] = useState<Record<string, TimeWindow[]>>(place?.openingHours ?? {});
-  const [newWindowDate, setNewWindowDate] = useState(days[0]?.date ?? "");
+  const [ohState, setOhState] = useState<OpeningHoursLocalState>(() =>
+    deriveOpeningHoursLocalState(place),
+  );
   const [region, setRegion] = useState(place?.region ?? "");
   // Whether the region control is in "type a brand-new name" mode (picked
   // "＋ New region…") rather than picking an existing one. See the Region
@@ -157,56 +166,11 @@ function PlaceEditorInner(props: {
   const [lat, setLat] = useState(coords.lat);
   const [lng, setLng] = useState(coords.lng);
   const flags = useStore((s) => s.flags);
-  const [fetchingHours, setFetchingHours] = useState(false);
-  const [osmNote, setOsmNote] = useState<string | null>(null);
   // Hotels are sleep bases the solver never schedules as a stop — dwell,
   // priority, appointment and opening-hours controls are meaningless for
   // one (see places.ts's normalizePlace), so hide them the moment the
   // checkbox is toggled, not just after save.
   const isHotel = category === "hotel";
-
-  /** Fetch the OSM `opening_hours` tag, expand it over the trip's dates
-   *  and fill the window rows (review before Save — nothing is persisted
-   *  until the editor saves). Absence/failure leaves the rows untouched
-   *  and explains why via an inline note. */
-  async function fetchOpeningHoursFromOsm() {
-    if (!place?.osmId || fetchingHours) return;
-    setFetchingHours(true);
-    setOsmNote(null);
-    try {
-      const client = new OverpassClient({ baseUrl: flags.overpassBaseUrl });
-      const tags = await client.fetchOsmTags(place.osmId);
-      const expr = tags?.opening_hours;
-      if (!expr) {
-        setOsmNote("No opening hours on OSM — left as always open.");
-        return;
-      }
-      const windows = expandOpeningHours(expr, days.map((d) => d.date));
-      if (!windows) {
-        setOsmNote("OSM opening hours unusable (24/7 or unparseable) — left as always open.");
-        return;
-      }
-      if (Object.keys(windows).length === 0) {
-        setOsmNote("OSM has no open hours on the trip dates — left as always open.");
-        return;
-      }
-      setOpeningHours(windows); // replace all rows; review and save
-    } catch {
-      setOsmNote("Couldn't fetch from OSM — check your connection and try again.");
-    } finally {
-      setFetchingHours(false);
-    }
-  }
-
-  /** Replace the windows of one date; empty lists are removed entirely. */
-  function setWindows(date: string, next: TimeWindow[]): void {
-    setOpeningHours((prev) => {
-      const copy = { ...prev };
-      if (next.length === 0) delete copy[date];
-      else copy[date] = next;
-      return copy;
-    });
-  }
 
   function save() {
     if (!name.trim()) return;
@@ -227,7 +191,7 @@ function PlaceEditorInner(props: {
           appointmentDay && appointmentTime
             ? { dayId: appointmentDay, start: appointmentStart(appointmentTime) }
             : undefined,
-        openingHours: Object.keys(openingHours).length > 0 ? openingHours : undefined,
+        ...buildOpeningHoursFields(ohState),
         region: region || undefined,
         notes: notes || undefined,
         osmId: place?.osmId,
@@ -316,84 +280,19 @@ function PlaceEditorInner(props: {
         )}
         {!isHotel && (
           <>
-            <div className="row">
-              <span>Opening hours</span>
-              <small>Empty = always open.</small>
-              {place?.osmId && (
-                <button type="button" disabled={fetchingHours} onClick={fetchOpeningHoursFromOsm}>
-                  {fetchingHours ? "Fetching…" : "Fetch opening hours from OSM"}
-                </button>
-              )}
-            </div>
-            {osmNote && (
-              <p className="hint" role="note">
-                {osmNote}
-              </p>
-            )}
-            {days.map((d, i) =>
-              (openingHours[d.date] ?? []).map((w, wi) => (
-                <div className="row" key={`${d.id}:${wi}`}>
-                  <span>
-                    Day {i + 1} ({d.date})
-                  </span>
-                  <input
-                    type="time"
-                    aria-label={`Opening time, day ${i + 1}`}
-                    value={w.start}
-                    onChange={(e) => {
-                      if (!e.target.value) return;
-                      const next = [...(openingHours[d.date] ?? [])];
-                      next[wi] = { ...w, start: e.target.value };
-                      setWindows(d.date, next);
-                    }}
-                  />
-                  <input
-                    type="time"
-                    aria-label={`Closing time, day ${i + 1}`}
-                    value={w.end}
-                    onChange={(e) => {
-                      if (!e.target.value) return;
-                      const next = [...(openingHours[d.date] ?? [])];
-                      next[wi] = { ...w, end: e.target.value };
-                      setWindows(d.date, next);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    aria-label={`Remove window, day ${i + 1}`}
-                    onClick={() =>
-                      setWindows(d.date, (openingHours[d.date] ?? []).filter((_, k) => k !== wi))
-                    }
-                  >
-                    ✕
-                  </button>
-                </div>
-             )),
-            )}
-            <div className="row">
-              <label>
-                Add window for
-                <select value={newWindowDate} onChange={(e) => setNewWindowDate(e.target.value)}>
-                  {days.map((d, i) => (
-                    <option key={d.id} value={d.date}>
-                      Day {i + 1} ({d.date})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                disabled={!newWindowDate}
-                onClick={() =>
-                  setWindows(newWindowDate, [
-                    ...(openingHours[newWindowDate] ?? []),
-                    { start: "09:00", end: "17:00" },
-                  ])
+            <OpeningHoursEditor state={ohState} onChange={setOhState} days={days} timezone={timezone} />
+            {place?.osmId && (
+              <OpeningHoursOsmReview
+                osmId={place.osmId}
+                days={days}
+                timezone={timezone}
+                overpassBaseUrl={flags.overpassBaseUrl}
+                current={{ weekly: ohState.weekly, closedDates: ohState.closedDates, openingHours: ohState.openingHours }}
+                onApply={({ weekly, closedDates, openingHours }) =>
+                  setOhState({ mode: "has_hours", weekly, closedDates, openingHours })
                 }
-              >
-                Add window
-              </button>
-            </div>
+              />
+            )}
           </>
         )}
         <div className="row">

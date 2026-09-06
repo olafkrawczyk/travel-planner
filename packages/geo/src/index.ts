@@ -21,5 +21,7 @@ export {
 } from "./overpass";
 export {
   expandOpeningHours,
+  deriveWeeklyProposal,
   type OpeningHoursExpansion,
+  type WeeklyProposal,
 } from "./openingHours";

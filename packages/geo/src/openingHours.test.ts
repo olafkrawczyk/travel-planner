@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandOpeningHours } from "./openingHours";
+import { deriveWeeklyProposal, expandOpeningHours } from "./openingHours";
 
 /** Local-time date helper (the parser works in machine-local time). */
 function localDate(y: number, m: number, d: number, hh = 0, mm = 0): Date {
@@ -78,5 +78,80 @@ describe("expandOpeningHours", () => {
     });
     // Sanity: local dates round-trip through the helper.
     expect(localDate(2026, 4, 2, 9, 30).getDate()).toBe(2);
+  });
+});
+
+describe("deriveWeeklyProposal", () => {
+  it("returns null when the expansion is null (no tag / unparseable / 24-7)", () => {
+    expect(deriveWeeklyProposal(null, ["2026-04-06"])).toBeNull();
+  });
+
+  it("derives a consistent weekly pattern across a two-week trip, using expandOpeningHours for the input (Mondays closed, rest open 09:00-17:00)", () => {
+    // 2026-04-06 is a Monday; this spans two full weeks through 2026-04-19 (Sunday).
+    const dates: string[] = [];
+    for (let d = 6; d <= 19; d++) dates.push(`2026-04-${String(d).padStart(2, "0")}`);
+
+    const expansion = expandOpeningHours("Tu-Su 09:00-17:00", dates);
+    const proposal = deriveWeeklyProposal(expansion, dates);
+
+    expect(proposal).not.toBeNull();
+    expect(proposal!.exceptions).toEqual({});
+    expect(proposal!.weekly.mon).toEqual({ kind: "closed" });
+    for (const wd of ["tue", "wed", "thu", "fri", "sat", "sun"] as const) {
+      expect(proposal!.weekly[wd]).toEqual({
+        kind: "open",
+        windows: [{ start: "09:00", end: "17:00" }],
+      });
+    }
+  });
+
+  it("flags a single-date holiday exception while the weekly pattern reflects the majority", () => {
+    // Three Tuesdays: two open 09:00-17:00, one (a holiday) closed.
+    const dates = ["2026-04-07", "2026-04-14", "2026-04-21"];
+    const expansion = {
+      "2026-04-07": [{ start: "09:00", end: "17:00" }],
+      "2026-04-21": [{ start: "09:00", end: "17:00" }],
+      // "2026-04-14" absent → closed that date.
+    };
+
+    const proposal = deriveWeeklyProposal(expansion, dates);
+
+    expect(proposal).not.toBeNull();
+    expect(proposal!.weekly.tue).toEqual({
+      kind: "open",
+      windows: [{ start: "09:00", end: "17:00" }],
+    });
+    expect(proposal!.exceptions).toEqual({ "2026-04-14": "closed" });
+  });
+
+  it("derives a closed weekday when every date on that weekday is absent from the expansion", () => {
+    // Both dates are Wednesdays; expandOpeningHours with a January-only rule
+    // over April dates parses fine but is closed on every given date.
+    const dates = ["2026-04-01", "2026-04-08"];
+    const expansion = expandOpeningHours("Jan 10:00-12:00", dates);
+
+    const proposal = deriveWeeklyProposal(expansion, dates);
+
+    expect(proposal).not.toBeNull();
+    expect(proposal!.weekly.wed).toEqual({ kind: "closed" });
+    expect(proposal!.exceptions).toEqual({});
+  });
+
+  it("defaults weekdays absent from the trip's dates to closed", () => {
+    // A 3-day trip covering only Mon/Tue/Wed.
+    const dates = ["2026-04-06", "2026-04-07", "2026-04-08"];
+    const expansion = {
+      "2026-04-06": [{ start: "09:00", end: "17:00" }],
+      "2026-04-07": [{ start: "09:00", end: "17:00" }],
+      "2026-04-08": [{ start: "09:00", end: "17:00" }],
+    };
+
+    const proposal = deriveWeeklyProposal(expansion, dates);
+
+    expect(proposal).not.toBeNull();
+    for (const wd of ["thu", "fri", "sat", "sun"] as const) {
+      expect(proposal!.weekly[wd]).toEqual({ kind: "closed" });
+    }
+    expect(proposal!.exceptions).toEqual({});
   });
 });

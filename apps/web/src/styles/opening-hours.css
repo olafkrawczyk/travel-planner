@@ -1,0 +1,152 @@
+/* Opening-hours editor (redesign-opening-hours change): the three-state mode
+ * control, the weekly grid, the date-exceptions section, and the OSM
+ * fetch/review panel. Tokens only — see apps/web/src/styles/tokens.css. */
+
+.oh-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  background: var(--bg-surface);
+}
+
+.oh-mode-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.oh-mode-group legend {
+  font-weight: 600;
+  padding: 0;
+}
+.oh-mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.oh-weekly-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+}
+
+.oh-weekday-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
+}
+.oh-weekday-row:last-child {
+  border-bottom: none;
+}
+
+.oh-weekday-label {
+  min-width: 6rem;
+  font-weight: 500;
+  padding-top: var(--space-1);
+}
+
+.oh-closed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  padding-top: var(--space-1);
+}
+
+.oh-windows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 12rem;
+}
+
+.oh-window-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Secondary/subordinate affordance relative to the weekly grid above — a
+ * quieter surface and smaller heading, per the design's "date exceptions are
+ * the secondary affordance" decision. */
+.oh-exceptions {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  background: var(--bg-app);
+}
+.oh-exceptions h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.oh-exception-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+.oh-exception-row:last-of-type {
+  border-bottom: none;
+}
+
+.oh-exception-label {
+  min-width: 10rem;
+  padding-top: var(--space-1);
+}
+
+.oh-add-exception {
+  align-items: center;
+  margin-top: var(--space-2);
+}
+
+.oh-osm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.oh-osm-review {
+  border: 1px solid var(--badge-border-info);
+  background: var(--badge-bg-info);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.oh-osm-review h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--badge-text-info);
+}
+
+.oh-osm-diff {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

@@ -12,7 +12,8 @@
  */
 
 import opening_hours from "opening_hours";
-import type { TimeWindow } from "@app/domain";
+import type { TimeWindow, WeeklyPattern, Weekday, DayPattern } from "@app/domain";
+import { weekdayOf } from "@app/domain";
 
 /** Per-date windows keyed by YYYY-MM-DD, or null when the tag is
  *  unusable (missing/unparseable/location-dependent) or means 24/7
@@ -101,4 +102,123 @@ export function expandOpeningHours(expr: string, dates: string[]): OpeningHoursE
     }));
   }
   return result;
+}
+
+/** A single date's resolved state: closed, or open with these windows
+ *  (deep-equal on start/end pairs, order-sensitive — `expandOpeningHours`
+ *  already returns sorted/merged windows so this is safe). */
+type DateState = "closed" | TimeWindow[];
+
+const WEEKDAYS: readonly Weekday[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+function stateKey(state: DateState): string {
+  return state === "closed" ? "closed" : JSON.stringify(state);
+}
+
+function toDayPattern(state: DateState): DayPattern {
+  return state === "closed" ? { kind: "closed" } : { kind: "open", windows: state };
+}
+
+/** The shape `deriveWeeklyProposal` returns: a full weekly pattern plus the
+ *  per-date exceptions that diverge from it. */
+export interface WeeklyProposal {
+  weekly: WeeklyPattern;
+  exceptions: Record<string, "closed" | TimeWindow[]>;
+}
+
+/**
+ * Turns `expandOpeningHours`'s flat per-date expansion into the
+ * weekly-pattern-plus-exceptions shape the PlaceEditor's OSM-review UI
+ * diffs against a place's current stored pattern before the user applies
+ * or discards it. Pure computation; never touches `expandOpeningHours`
+ * itself or any stored data.
+ *
+ * - `expansion === null` (tag absent/unparseable/24-7/location-dependent,
+ *   see `expandOpeningHours`'s doc comment) means there is nothing to
+ *   propose → returns `null`.
+ * - Otherwise every date in `dates` gets an actual state: `expansion[date]`
+ *   if present and non-empty, else "closed" (per `expandOpeningHours`'s
+ *   contract that a date missing from a non-null expansion parsed fine but
+ *   is closed that day).
+ * - Dates are grouped by weekday. Each of the 7 weekdays that has at least
+ *   one date in `dates` gets the state shared by the STRICT MAJORITY of
+ *   its dates as the weekly pattern; every date whose actual state differs
+ *   from its weekday's chosen pattern is reported in `exceptions`, keyed
+ *   by date. On a count tie, "open" is preferred over "closed", and a
+ *   further tie between two different open window-sets is broken by
+ *   whichever occurs earliest among that weekday's dates — both are
+ *   deterministic but otherwise-arbitrary choices, per the task brief.
+ * - A weekday with no dates at all in `dates` (e.g. a trip that never
+ *   spans a Sunday) still gets an entry in `weekly` (it's a full 7-key
+ *   type): it defaults to `{kind:"closed"}` since there is no evidence to
+ *   support any other claim, and "closed" is the safer default than
+ *   guessing "open" for a day the user never actually visited.
+ */
+export function deriveWeeklyProposal(
+  expansion: OpeningHoursExpansion,
+  dates: string[],
+): WeeklyProposal | null {
+  if (expansion === null) return null;
+
+  const actualByDate = new Map<string, DateState>();
+  for (const date of dates) {
+    const windows = expansion[date];
+    actualByDate.set(date, windows && windows.length > 0 ? windows : "closed");
+  }
+
+  const datesByWeekday = new Map<Weekday, string[]>();
+  for (const date of dates) {
+    const wd = weekdayOf(date);
+    const list = datesByWeekday.get(wd);
+    if (list) list.push(date);
+    else datesByWeekday.set(wd, [date]);
+  }
+
+  const weekly = {} as WeeklyPattern;
+  const chosenKeyByWeekday = new Map<Weekday, string>();
+
+  for (const wd of WEEKDAYS) {
+    const datesForWeekday = datesByWeekday.get(wd);
+    if (!datesForWeekday || datesForWeekday.length === 0) {
+      weekly[wd] = { kind: "closed" };
+      continue;
+    }
+
+    // Tally each distinct state (by deep-equal key) among this weekday's dates.
+    const counts = new Map<string, { state: DateState; count: number; firstIndex: number }>();
+    datesForWeekday.forEach((date, idx) => {
+      const state = actualByDate.get(date)!;
+      const key = stateKey(state);
+      const entry = counts.get(key);
+      if (entry) entry.count++;
+      else counts.set(key, { state, count: 1, firstIndex: idx });
+    });
+
+    // Sort by count desc; tie-break prefers "open" over "closed", then
+    // whichever state's first occurrence comes earliest for this weekday.
+    const ranked = Array.from(counts.entries()).map(([key, v]) => ({ key, ...v }));
+    ranked.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      const aClosed = a.state === "closed" ? 1 : 0;
+      const bClosed = b.state === "closed" ? 1 : 0;
+      if (aClosed !== bClosed) return aClosed - bClosed;
+      return a.firstIndex - b.firstIndex;
+    });
+    const chosen = ranked[0]!;
+
+    weekly[wd] = toDayPattern(chosen.state);
+    chosenKeyByWeekday.set(wd, chosen.key);
+  }
+
+  const exceptions: Record<string, "closed" | TimeWindow[]> = {};
+  for (const date of dates) {
+    const wd = weekdayOf(date);
+    const actual = actualByDate.get(date)!;
+    const chosenKey = chosenKeyByWeekday.get(wd);
+    if (chosenKey !== undefined && stateKey(actual) !== chosenKey) {
+      exceptions[date] = actual;
+    }
+  }
+
+  return { weekly, exceptions };
 }

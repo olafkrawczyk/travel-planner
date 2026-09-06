@@ -7,12 +7,14 @@ import {
   newDayId,
   newPlaceId,
   newTripId,
+  openingHoursState,
   parseTrip,
   schemaVersion,
+  weekdayOf,
   windowsForDate,
   TripSchema,
 } from "./index";
-import type { Place } from "./index";
+import type { Place, WeeklyPattern } from "./index";
 import { formatHHMM, parseHHMM } from "./time";
 
 const dayId = newDayId();
@@ -253,5 +255,204 @@ describe("time helpers", () => {
     expect(() => parseHHMM("24:00")).toThrow();
     expect(() => parseHHMM("9:60")).toThrow();
     expect(() => parseHHMM("bad")).toThrow();
+  });
+});
+
+// ---- Weekly opening-hours pattern (redesign-opening-hours change) ----
+
+const basePlace: Place = {
+  id: "plc_weekly",
+  name: "Test Place",
+  lat: 0,
+  lng: 0,
+  category: "museum",
+  dwellMin: 60,
+  priority: 2,
+};
+
+/** Mon-Fri 09:00-17:00, closed Sat/Sun. */
+const weekdayOpenPattern: WeeklyPattern = {
+  mon: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  tue: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  wed: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  thu: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  fri: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  sat: { kind: "closed" },
+  sun: { kind: "closed" },
+};
+
+/** Open every day 09:00-17:00 — used by the override/closed-dates precedence tests. */
+const openEveryDayPattern: WeeklyPattern = {
+  mon: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  tue: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  wed: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  thu: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  fri: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  sat: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+  sun: { kind: "open", windows: [{ start: "09:00", end: "17:00" }] },
+};
+
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h! * 60 + m!;
+}
+
+describe("weekdayOf", () => {
+  it("maps concrete dates to the correct local weekday", () => {
+    expect(weekdayOf("2026-04-06")).toBe("mon");
+    expect(weekdayOf("2026-04-07")).toBe("tue");
+    expect(weekdayOf("2026-04-08")).toBe("wed");
+    expect(weekdayOf("2026-04-09")).toBe("thu");
+    expect(weekdayOf("2026-04-10")).toBe("fri");
+    expect(weekdayOf("2026-04-11")).toBe("sat");
+    expect(weekdayOf("2026-04-12")).toBe("sun");
+  });
+});
+
+describe("windowsForDate: weekly pattern expansion", () => {
+  it("returns the weekday's windows on an open weekday", () => {
+    const place: Place = { ...basePlace, openingHoursWeekly: weekdayOpenPattern };
+    // 2026-04-06..10 are Mon..Fri.
+    for (const date of ["2026-04-06", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10"]) {
+      expect(windowsForDate(place, date)).toEqual([{ start: "09:00", end: "17:00" }]);
+    }
+  });
+
+  it("returns the closed sentinel on a closed weekday", () => {
+    const place: Place = { ...basePlace, openingHoursWeekly: weekdayOpenPattern };
+    // 2026-04-11 is Sat, 2026-04-12 is Sun — both closed in this pattern.
+    for (const date of ["2026-04-11", "2026-04-12"]) {
+      const windows = windowsForDate(place, date);
+      expect(windows).toEqual([{ start: "23:59", end: "00:00" }]);
+    }
+  });
+});
+
+describe("windowsForDate: closed-vs-unknown distinction", () => {
+  it("returns undefined (unknown) for a place with no opening-hours fields at all", () => {
+    const place: Place = { ...basePlace };
+    expect(windowsForDate(place, "2026-04-06")).toBeUndefined();
+    expect(windowsForDate(place, "2026-04-11")).toBeUndefined();
+  });
+
+  it("returns a non-empty, unconditionally-unsatisfiable sentinel for a closed weekday", () => {
+    const place: Place = { ...basePlace, openingHoursWeekly: weekdayOpenPattern };
+    const windows = windowsForDate(place, "2026-04-11"); // Saturday: closed
+    expect(windows).toBeDefined();
+    expect(windows!.length).toBeGreaterThan(0);
+    // Prove the sentinel can never satisfy `start + dwellMin <= close` for any
+    // non-negative dwell, matching packages/solver/src/sequence.ts's
+    // feasibleVisit gate (a file this package does not own, so this is an
+    // arithmetic proxy rather than a direct call into that package).
+    for (const w of windows!) {
+      const start = toMinutes(w.start);
+      const close = toMinutes(w.end);
+      for (const dwellMin of [0, 1, 500]) {
+        expect(start + dwellMin <= close).toBe(false);
+      }
+    }
+  });
+});
+
+describe("windowsForDate: per-date override beats weekly pattern", () => {
+  it("prefers the openingHours[date] entry over the weekly pattern for that date", () => {
+    const place: Place = {
+      ...basePlace,
+      openingHoursWeekly: openEveryDayPattern,
+      openingHours: { "2026-04-03": [{ start: "10:00", end: "12:00" }] },
+    };
+    // 2026-04-03 is a Friday, which openEveryDayPattern says is open 09:00-17:00.
+    expect(windowsForDate(place, "2026-04-03")).toEqual([{ start: "10:00", end: "12:00" }]);
+    // A date with no override still falls through to the weekly pattern.
+    expect(windowsForDate(place, "2026-04-04")).toEqual([{ start: "09:00", end: "17:00" }]);
+  });
+});
+
+describe("windowsForDate: openingHoursClosedDates beats weekly pattern", () => {
+  it("treats a listed closed date as closed even though the weekly pattern says open", () => {
+    const place: Place = {
+      ...basePlace,
+      openingHoursWeekly: openEveryDayPattern,
+      openingHoursClosedDates: ["2026-04-04"],
+    };
+    // 2026-04-04 is a Saturday, which openEveryDayPattern says is open.
+    expect(windowsForDate(place, "2026-04-04")).toEqual([{ start: "23:59", end: "00:00" }]);
+    // An unlisted date still falls through to the weekly pattern.
+    expect(windowsForDate(place, "2026-04-03")).toEqual([{ start: "09:00", end: "17:00" }]);
+  });
+});
+
+describe("migration v2 -> v3", () => {
+  it("parses a v2 trip unchanged and windowsForDate behaves identically to before the migration", () => {
+    const v2 = {
+      id: newTripId(),
+      schemaVersion: 2,
+      name: "Legacy Trip",
+      timezone: "Asia/Tokyo",
+      days: [
+        {
+          id: newDayId(),
+          date: "2026-04-02",
+          start: "09:00",
+          end: "21:00",
+          startLocation: "base",
+          endLocation: "base",
+          baseStartId: "hotel_1",
+          baseEndId: "hotel_1",
+        },
+      ],
+      places: [
+        {
+          id: newPlaceId(),
+          name: "Old Place",
+          lat: 35.7,
+          lng: 139.8,
+          category: "museum",
+          dwellMin: 60,
+          priority: 1,
+          openingHours: { "2026-04-02": [{ start: "09:00", end: "17:00" }] },
+        },
+      ],
+      travelOverrides: [],
+      settings: {},
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const trip = parseTrip(v2);
+    expect(trip.schemaVersion).toBe(schemaVersion);
+    const place = trip.places[0]!;
+    expect(place.openingHoursWeekly).toBeUndefined();
+    expect(place.openingHoursClosedDates).toBeUndefined();
+    expect(place.openingHoursAlwaysOpen).toBeUndefined();
+    expect(windowsForDate(place, "2026-04-02")).toEqual([{ start: "09:00", end: "17:00" }]);
+    expect(windowsForDate(place, "2026-04-03")).toBeUndefined();
+  });
+});
+
+describe("openingHoursState", () => {
+  it("is unknown when no opening-hours field is set", () => {
+    expect(openingHoursState({ ...basePlace })).toBe("unknown");
+  });
+
+  it("is always_open when the user has explicitly confirmed no restriction", () => {
+    expect(openingHoursState({ ...basePlace, openingHoursAlwaysOpen: true })).toBe("always_open");
+  });
+
+  it("is has_hours when a weekly pattern is set", () => {
+    expect(openingHoursState({ ...basePlace, openingHoursWeekly: weekdayOpenPattern })).toBe("has_hours");
+  });
+
+  it("is has_hours when the legacy openingHours map has entries", () => {
+    expect(
+      openingHoursState({
+        ...basePlace,
+        openingHours: { "2026-04-02": [{ start: "09:00", end: "17:00" }] },
+      }),
+    ).toBe("has_hours");
+  });
+
+  it("is has_hours when openingHoursClosedDates has entries, even without a weekly pattern", () => {
+    expect(openingHoursState({ ...basePlace, openingHoursClosedDates: ["2026-04-04"] })).toBe("has_hours");
   });
 });

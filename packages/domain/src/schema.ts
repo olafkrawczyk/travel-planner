@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** Stored-data schema version. Bump when schemas change; migrations live in migrations.ts. */
-export const schemaVersion = 2;
+export const schemaVersion = 3;
 
 export const IdSchema = z.string().min(1);
 
@@ -75,6 +75,36 @@ export const OpeningHoursSchema = z
     message: `openingHours cannot list more than ${OPENING_HOURS_MAX_DATES} dates.`,
   });
 
+export const WeekdaySchema = z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
+export type Weekday = z.infer<typeof WeekdaySchema>;
+
+/** One weekday's recurring pattern: either closed all day, or open during
+ *  1+ windows (bounded by the same per-day window cap as `OpeningHoursSchema`
+ *  above, since both represent "windows on one day"). */
+export const DayPatternSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("closed") }),
+  z.object({
+    kind: z.literal("open"),
+    windows: z.array(TimeWindowSchema).min(1).max(OPENING_HOURS_MAX_WINDOWS_PER_DATE),
+  }),
+]);
+export type DayPattern = z.infer<typeof DayPatternSchema>;
+
+/** A full 7-day recurring pattern. Every weekday is required (not partial/
+ *  a record) so an unset day is never ambiguous about its state — the editor
+ *  defaults new weekdays to `{kind:"closed"}` and lets the user flip each to
+ *  open. */
+export const WeeklyPatternSchema = z.object({
+  mon: DayPatternSchema,
+  tue: DayPatternSchema,
+  wed: DayPatternSchema,
+  thu: DayPatternSchema,
+  fri: DayPatternSchema,
+  sat: DayPatternSchema,
+  sun: DayPatternSchema,
+});
+export type WeeklyPattern = z.infer<typeof WeeklyPatternSchema>;
+
 export const PlaceSchema = z.object({
   id: IdSchema,
   name: z.string().min(1).max(PLACE_NAME_MAX),
@@ -85,6 +115,26 @@ export const PlaceSchema = z.object({
   dwellMin: z.number().int().min(0).max(1440),
   priority: z.union([z.literal(1), z.literal(2), z.literal(3)]), // 1 = must
   openingHours: OpeningHoursSchema.optional(),
+  /**
+   * Three-way split for recurring + exceptional hours, kept additive so
+   * `openingHours`'s field type above never changes (see its own doc
+   * comment, and `packages/solver/src/matrix.ts`'s `reasonFor`, which reads
+   * that field directly assuming the original `Record<string, TimeWindow[]>`
+   * shape — an unowned call site this package must keep compiling):
+   *  - `openingHoursWeekly`: the recurring weekly pattern (mon..sun).
+   *  - `openingHoursClosedDates`: specific dates explicitly closed,
+   *    overriding both the weekly pattern and any `openingHours[date]` entry.
+   *  - `openingHoursAlwaysOpen`: set only when the user has explicitly
+   *    confirmed "no restriction" for this place — distinct from simply
+   *    never having set any hours (see `openingHoursState`).
+   * `openingHours` itself keeps its original per-date-override role,
+   * reframed by the UI as an "exceptions" list: it beats the weekly pattern
+   * but loses to an explicit closed date. See `windowsForDate` for the full
+   * resolution order.
+   */
+  openingHoursWeekly: WeeklyPatternSchema.optional(),
+  openingHoursClosedDates: z.array(z.string().max(32)).max(OPENING_HOURS_MAX_DATES).optional(),
+  openingHoursAlwaysOpen: z.boolean().optional(),
   appointment: AppointmentSchema.optional(),
   /** Soft force: keep this place on the given day, relaxing that day's time budget. */
   forceDayId: IdSchema.optional(),
@@ -294,11 +344,82 @@ export const migrations: Record<number, Migration> = {
         })
       : t.places,
   }),
+  // v2 → v3: deliberate no-op. `openingHoursWeekly`, `openingHoursClosedDates`,
+  // and `openingHoursAlwaysOpen` are optional/additive new fields on `Place` —
+  // no stored data needs transforming. Old trips simply have none of them set,
+  // and `windowsForDate` falls through to exactly its pre-v3 per-date-only
+  // behavior in that case, so pre-existing trips solve identically. Recorded
+  // explicitly (rather than silently skipped) so the version bump and its
+  // justification are traceable, matching the style of the `1: (t) => t`
+  // migration above.
+  3: (t) => t,
 };
 
-/** Opening-hour windows for a place on a concrete date; undefined = always open that day. */
+const WEEKDAY_BY_JS_DAY: readonly Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** Maps a "YYYY-MM-DD" date string to its weekday, in local time (no UTC
+ *  shift) — consistent with how `Day.date`/`TimeStringSchema` values are
+ *  already treated as trip-local throughout this package. */
+export function weekdayOf(date: string): Weekday {
+  const [y, m, d] = date.split("-").map(Number);
+  const jsDay = new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1).getDay();
+  return WEEKDAY_BY_JS_DAY[jsDay]!;
+}
+
+/** Solver-facing encoding of "closed all day". `packages/solver/src/sequence.ts`'s
+ *  `feasibleVisit` (a file this package does not own and must not require changes
+ *  to) only treats a *non-empty* `windowsForDate(...)` result as constraining, so
+ *  an empty array can't express "closed" — it reads identically to "no windows at
+ *  all" there. This single-element window opens (23:59 = 1439) after it closes
+ *  (00:00 = 0), so `start + dwellMin <= close` can never hold for any non-negative
+ *  dwell, including 0 — unconditionally infeasible regardless of the day's start
+ *  time or the place's dwell. Never persisted and never shown to the user; it only
+ *  exists as `windowsForDate`'s synthesized return value. */
+const CLOSED_ALL_DAY: TimeWindow[] = [{ start: "23:59", end: "00:00" }];
+
+/**
+ * Opening-hour windows for a place on a concrete date, resolved in this
+ * precedence:
+ *  1. `place.openingHoursClosedDates` contains `date` → the place is
+ *     explicitly closed that day; returns `CLOSED_ALL_DAY`.
+ *  2. `place.openingHours?.[date]` exists and is non-empty → returned as-is
+ *     (the legacy/exceptions per-date override; unchanged behavior for
+ *     pre-existing v1/v2 data with no weekly pattern).
+ *  3. `place.openingHoursWeekly` is set → resolved via
+ *     `place.openingHoursWeekly[weekdayOf(date)]`: `{kind:"closed"}` returns
+ *     `CLOSED_ALL_DAY`, `{kind:"open", windows}` returns `windows`.
+ *  4. Otherwise → `undefined` (unknown/no restriction). This is what every
+ *     pre-existing trip with no weekly pattern falls through to, identical
+ *     to the pre-v3 behavior of this function.
+ */
 export function windowsForDate(place: Place, date: string): TimeWindow[] | undefined {
-  return place.openingHours?.[date];
+  if (place.openingHoursClosedDates?.includes(date)) return CLOSED_ALL_DAY;
+  const override = place.openingHours?.[date];
+  if (override && override.length > 0) return override;
+  const weekly = place.openingHoursWeekly;
+  if (weekly) {
+    const day = weekly[weekdayOf(date)];
+    return day.kind === "closed" ? CLOSED_ALL_DAY : day.windows;
+  }
+  return undefined;
+}
+
+/** Three-state summary of a place's opening-hours data, for the UI's badge:
+ *  - `"has_hours"`: some concrete constraint is on record — a weekly
+ *    pattern, a non-empty legacy `openingHours` map, or any closed dates.
+ *  - `"always_open"`: the user has explicitly confirmed no restriction.
+ *  - `"unknown"`: hours have never been set for this place. */
+export type OpeningHoursState = "unknown" | "always_open" | "has_hours";
+export function openingHoursState(place: Place): OpeningHoursState {
+  if (
+    place.openingHoursWeekly ||
+    (place.openingHours && Object.keys(place.openingHours).length > 0) ||
+    (place.openingHoursClosedDates && place.openingHoursClosedDates.length > 0)
+  ) {
+    return "has_hours";
+  }
+  if (place.openingHoursAlwaysOpen) return "always_open";
+  return "unknown";
 }
 
 /**

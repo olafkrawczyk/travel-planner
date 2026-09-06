@@ -38,6 +38,10 @@ export function baseUsage(trip: Trip, placeId: string): { dayIndex: number; dayI
  *    timeline. A hotel isn't placed in the timeline at all — stripped.
  *  - `openingHours`: gates *visiting* hours for a scheduled stop. A base has
  *    no visiting hours — stripped.
+ *  - `openingHoursWeekly`/`openingHoursClosedDates`/`openingHoursAlwaysOpen`:
+ *    the weekly-recurring-pattern/exceptions/always-open fields added
+ *    alongside `openingHours` (see schema.ts) — same rationale as
+ *    `openingHours` above, a hotel has no visiting hours to gate — stripped.
  *  - `forceDayId`: forces an otherwise-unscheduled place into a day. Hotels
  *    are never unscheduled candidates — stripped.
  *
@@ -51,8 +55,19 @@ export function normalizePlace(place: Place): Place {
     place.priority !== 3 ||
     place.appointment !== undefined ||
     place.openingHours !== undefined ||
+    place.openingHoursWeekly !== undefined ||
+    place.openingHoursClosedDates !== undefined ||
+    place.openingHoursAlwaysOpen !== undefined ||
     place.forceDayId !== undefined;
   if (!dirty) return place;
-  const { appointment: _appointment, openingHours: _openingHours, forceDayId: _forceDayId, ...rest } = place;
+  const {
+    appointment: _appointment,
+    openingHours: _openingHours,
+    openingHoursWeekly: _openingHoursWeekly,
+    openingHoursClosedDates: _openingHoursClosedDates,
+    openingHoursAlwaysOpen: _openingHoursAlwaysOpen,
+    forceDayId: _forceDayId,
+    ...rest
+  } = place;
   return { ...rest, dwellMin: 0, priority: 3 };
 }
