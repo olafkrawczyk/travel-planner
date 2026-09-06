@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import "fake-indexeddb/auto";
 import { parseTrip, schemaVersion, type Trip } from "@app/domain";
-import { LocalRepository } from "./localRepository";
+import { LocalRepository, computeNextRevision } from "./localRepository";
 import { RepositoryError } from "./repository";
 
 function sampleTrip(id = "trip_1"): Trip {
@@ -172,5 +172,83 @@ describe("LocalRepository", () => {
     const { trips, failedCount } = await repo.list();
     expect(trips.map((x) => x.id)).toEqual(["trip_1"]); // the corrupt row is excluded...
     expect(failedCount).toBe(1); // ...but its loss is signalled, not silent
+  });
+});
+
+// Cross-tab write-conflict detection (release audit item 3): two tabs editing
+// the same trip each persist a full snapshot keyed only on id, with nothing
+// to notice one overwrote the other. `put`'s `expectedRev` + the returned
+// `conflict` flag turn that into a detectable event.
+describe("computeNextRevision (pure)", () => {
+  it("no conflict when no expectedRev was given (fresh trip, or caller opts out of the check)", () => {
+    expect(computeNextRevision(undefined, undefined)).toEqual({ rev: 1, conflict: false });
+    expect(computeNextRevision(5, undefined)).toEqual({ rev: 6, conflict: false });
+  });
+
+  it("no conflict when expectedRev matches the current revision", () => {
+    expect(computeNextRevision(3, 3)).toEqual({ rev: 4, conflict: false });
+  });
+
+  it("flags a conflict when expectedRev is stale, but still advances the revision", () => {
+    expect(computeNextRevision(3, 2)).toEqual({ rev: 4, conflict: true });
+  });
+
+  it("treats a legacy row with no revision (currentRev undefined) as revision 0", () => {
+    // A row written before revisions existed: caller has never seen a rev
+    // (expectedRev undefined) → no false conflict, and it gets upgraded to 1.
+    expect(computeNextRevision(undefined, undefined)).toEqual({ rev: 1, conflict: false });
+    // A caller that DID previously read it via getWithRevision (rev 0) and
+    // nothing else wrote it since → still no conflict.
+    expect(computeNextRevision(undefined, 0)).toEqual({ rev: 1, conflict: false });
+  });
+});
+
+describe("LocalRepository revisions", () => {
+  let repo: LocalRepository;
+
+  beforeEach(() => {
+    void new LocalRepository("test-rev-db-" + Math.random()).deleteDatabase();
+    repo = new LocalRepository("test-rev-db-" + Math.random());
+  });
+
+  it("starts a brand-new trip at revision 1 and increments on each subsequent put", async () => {
+    const t = parseTrip(sampleTrip());
+    const first = await repo.put(t);
+    expect(first).toEqual({ rev: 1, conflict: false });
+    const second = await repo.put(t);
+    expect(second).toEqual({ rev: 2, conflict: false });
+    expect(await repo.getWithRevision("trip_1")).toEqual({ trip: t, rev: 2 });
+  });
+
+  it("detects a stale write (the cross-tab clobber scenario) and still saves it", async () => {
+    const t = parseTrip(sampleTrip());
+    await repo.put(t); // rev 1
+    const { rev } = (await repo.getWithRevision("trip_1"))!; // tab A reads rev 1
+
+    // Tab B (or the same repo, simulating another tab) writes again, moving the row to rev 2.
+    await repo.put({ ...t, name: "Renamed by tab B" });
+
+    // Tab A now saves its own edit, still believing the base is rev 1 — stale.
+    const result = await repo.put({ ...t, name: "Renamed by tab A" }, rev);
+    expect(result.conflict).toBe(true);
+    expect(result.rev).toBe(3); // the write still happened — no silent data loss on either side
+    const stored = await repo.get("trip_1");
+    expect(stored?.name).toBe("Renamed by tab A"); // last write wins, but the clobber was flagged
+  });
+
+  it("a legacy row with no revision field still loads, and gets a revision on its first write since", async () => {
+    const t = parseTrip(sampleTrip());
+    // Bypass put() to write a pre-revision-era row directly, the way an
+    // existing user's IndexedDB looks before this change ships.
+    await (repo as unknown as { trips: { put(row: { id: string; json: string }): Promise<unknown> } }).trips.put({
+      id: t.id,
+      json: JSON.stringify(t),
+    });
+
+    expect(await repo.get(t.id)).toEqual(t); // legacy row: no data loss, loads fine
+    expect(await repo.getWithRevision(t.id)).toEqual({ trip: t, rev: 0 });
+
+    const result = await repo.put(t, 0); // caller read it via getWithRevision → expects rev 0
+    expect(result).toEqual({ rev: 1, conflict: false }); // upgraded cleanly, no false conflict
   });
 });

@@ -115,6 +115,12 @@ export interface StoreState {
   repo: LocalRepository;
   trips: Trip[];
   currentTrip: Trip | null;
+  /** Storage-row revision `currentTrip` was last loaded/saved at (release
+   *  audit item 3, cross-tab write conflicts) — null when there is no
+   *  current trip, or it hasn't round-tripped through storage yet. A
+   *  storage-level bookkeeping concern, deliberately not part of the `Trip`
+   *  domain object; see `packages/storage`'s `TripRepository.put`. */
+  currentTripRev: number | null;
   itinerary: Itinerary | null;
   solving: boolean;
   past: Trip[];
@@ -210,11 +216,25 @@ let resolveCounter = 0;
 /** Persistent cache for OSRM travel matrices (main thread only — never the worker). */
 const matrixCache: MatrixCache = new DexieMatrixCache();
 
+/**
+ * Contact identifier sent as Photon's `From` header (release audit item 4).
+ * `User-Agent` is a forbidden header name the fetch spec drops silently
+ * (PhotonClient's attempt at it never actually reaches the server), so
+ * `From`/`contactEmail` is the only lever that does. Same value as
+ * SearchBox.tsx's `PHOTON_CONTACT` — that file is owned by a concurrent
+ * agent and off-limits here, and its constant isn't exported, so this is a
+ * second definition rather than a shared import; keep the two in sync if
+ * this value ever changes. Not a personal email address, and not anything
+ * from local git config — see SearchBox.tsx's fuller comment on why.
+ */
+const PHOTON_CONTACT = "travel-planner-app (no project contact configured yet)";
+
 /** Non-debounced geocoder for one-shot lookups (trip creation). */
 const creationGeo = new PhotonClient({
   cache: new MemoryGeoCache(),
   debounceMs: 0,
   appName: "travel-planner",
+  contactEmail: PHOTON_CONTACT,
 });
 
 /**
@@ -379,14 +399,41 @@ export const useStore = create<StoreState>((set, get) => {
    * open after a failed save. Recording the failure in state does both jobs
    * at once and is the only signal a caller needs: check `saveState` (or let
    * the header's indicator do it) rather than the promise's outcome.
+   *
+   * Cross-tab write conflicts (release audit item 3): passes the last known
+   * `currentTripRev` as `expectedRev` whenever `trip` is still the open
+   * trip, so a stale base (another tab having saved this same trip since we
+   * last read/wrote it) comes back flagged in `repo.put`'s result. The write
+   * still happens — see `TripRepository.put`'s doc comment for why refusing
+   * to save isn't actually safer here — but the user is told via the
+   * existing toast stack rather than the clobber staying silent. Returns the
+   * put result (or undefined on a failed save) so call sites that set
+   * `currentTrip` *after* awaiting persist (createTrip/loadSampleTrip) can
+   * seed `currentTripRev` themselves instead of relying on the id-match
+   * check below, which can't succeed for them (currentTrip isn't the new
+   * trip yet at the time this runs).
    */
-  async function persist(trip: Trip): Promise<void> {
+  async function persist(trip: Trip): Promise<{ rev: number; conflict: boolean } | undefined> {
     set({ saveState: "saving" });
     try {
-      await get().repo.put(trip);
-      set({ saveState: "saved", savedAt: new Date().toISOString(), saveError: null });
+      const isCurrent = get().currentTrip?.id === trip.id;
+      const expectedRev = isCurrent ? (get().currentTripRev ?? undefined) : undefined;
+      const result = await get().repo.put(trip, expectedRev);
+      set((s) => ({
+        saveState: "saved",
+        savedAt: new Date().toISOString(),
+        saveError: null,
+        currentTripRev: s.currentTrip?.id === trip.id ? result.rev : s.currentTripRev,
+      }));
+      if (result.conflict) {
+        set({
+          toast:
+            "This trip was changed in another tab since you last opened it here — your latest edit was saved on top of that change. Check nothing important got overwritten.",
+        });
+      }
       clearTimeout(saveIdleTimer);
       saveIdleTimer = setTimeout(() => set({ saveState: "idle" }), 2000);
+      return result;
     } catch (e) {
       clearTimeout(saveIdleTimer); // stay in "error" — do not time out back to "idle"
       const message = e instanceof Error ? e.message : String(e);
@@ -396,6 +443,7 @@ export const useStore = create<StoreState>((set, get) => {
         saveError: message,
         toast: `Save failed — your changes are not being saved (${message}).`,
       });
+      return undefined;
     }
   }
 
@@ -403,6 +451,7 @@ export const useStore = create<StoreState>((set, get) => {
     repo: new LocalRepository(),
     trips: [],
     currentTrip: null,
+    currentTripRev: null,
     itinerary: null,
     solving: false,
     past: [],
@@ -469,10 +518,14 @@ export const useStore = create<StoreState>((set, get) => {
         }
       }
       const trip = emptyTrip(name.trim() || "Untitled trip", dates, baseCoords);
-      await persist(trip);
+      // persist() can't seed `currentTripRev` itself here — `currentTrip` is
+      // still whatever was open before (or null), not yet `trip` — so take
+      // its returned revision explicitly instead (see persist's doc comment).
+      const result = await persist(trip);
       set((s) => ({
         trips: [trip, ...s.trips],
         currentTrip: trip,
+        currentTripRev: result?.rev ?? null,
         itinerary: null,
         past: [],
         future: [],
@@ -488,10 +541,11 @@ export const useStore = create<StoreState>((set, get) => {
 
     async loadSampleTrip(sample) {
       const trip = "hotels" in sample ? multiHotelSampleTrip(sample) : sampleTrip(sample);
-      await persist(trip);
+      const result = await persist(trip); // see createTrip's comment on why the rev comes from here
       set((s) => ({
         trips: [trip, ...s.trips],
         currentTrip: trip,
+        currentTripRev: result?.rev ?? null,
         itinerary: null,
         past: [],
         future: [],
@@ -502,10 +556,28 @@ export const useStore = create<StoreState>((set, get) => {
     },
 
     async openTrip(id) {
-      const trip = get().trips.find((t) => t.id === id) ?? (await get().repo.get(id));
-      if (!trip) return;
+      // Always consult storage for the row's current revision (release audit
+      // item 3) — even when a copy is already sitting in the in-memory
+      // `trips` list, its revision could be behind whatever another tab has
+      // since written. The in-memory trip object is still preferred for the
+      // actual content, since it may hold edits this tab made that are
+      // persisting but haven't round-tripped back through `get` yet.
+      const memTrip = get().trips.find((t) => t.id === id);
+      const row = await get().repo.getWithRevision(id);
+      const trip = memTrip ?? row?.trip;
+      if (!trip) {
+        // P2 #7: this used to leave the user on the current screen with no
+        // explanation at all. The app has a toast stack now — use it, same
+        // as every other "couldn't do that" path in this file. Phrased as
+        // "Could not" (not "Couldn't") so `classifyToast`'s regex below
+        // actually matches it and treats this as the error it is (persists
+        // until dismissed, rather than auto-dismissing like routine info).
+        set({ toast: "Could not open that trip — it may have been deleted." });
+        return;
+      }
       set({
         currentTrip: trip,
+        currentTripRev: row?.rev ?? null,
         itinerary: null,
         past: [],
         future: [],
@@ -520,6 +592,7 @@ export const useStore = create<StoreState>((set, get) => {
       resolveCounter++; // invalidate in-flight solves
       set({
         currentTrip: null,
+        currentTripRev: null,
         itinerary: null,
         past: [],
         future: [],
@@ -543,6 +616,7 @@ export const useStore = create<StoreState>((set, get) => {
       set((s) => ({
         trips: s.trips.filter((t) => t.id !== id),
         currentTrip: s.currentTrip?.id === id ? null : s.currentTrip,
+        currentTripRev: s.currentTrip?.id === id ? null : s.currentTripRev,
         itinerary: s.currentTrip?.id === id ? null : s.itinerary,
       }));
     },
@@ -833,7 +907,13 @@ export const useStore = create<StoreState>((set, get) => {
  */
 let toastSeq = 0;
 function classifyToast(message: string): "info" | "error" {
-  return /\b(fail(ed)?|error|could not|invalid|unavailable)\b/i.test(message) ? "error" : "info";
+  // "another tab" (release audit item 3): a cross-tab write-conflict notice
+  // is important enough to persist until dismissed, same as any other error
+  // here — a user mid-edit is unlikely to be staring at the toast stack
+  // during its 4s auto-dismiss window.
+  return /\b(fail(ed)?|error|could not|invalid|unavailable|another tab)\b/i.test(message)
+    ? "error"
+    : "info";
 }
 useStore.subscribe((state, prev) => {
   if (!state.toast || state.toast === prev.toast) return;

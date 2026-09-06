@@ -34,6 +34,9 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: v
 }
 
 .error-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   border: 1px solid var(--danger);
   background: var(--danger-subtle);
   color: var(--danger);
@@ -41,6 +44,25 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: v
   padding: var(--space-2) var(--space-3);
   margin: var(--space-2) 0;
   font-size: var(--text-sm);
+}
+.error-banner-message { flex: 1 1 auto; }
+/* P2 #6: `importError` only clears on a later successful import (store.ts) —
+ * without a dismiss control, a failed import left this banner up
+ * permanently. Same dismiss-button pattern as `.toast-dismiss`. */
+.error-banner-dismiss {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  padding: 0 var(--space-1);
+  font-size: var(--text-sm);
+  line-height: 1;
+  opacity: 0.7;
+}
+button.error-banner-dismiss:hover:not(:disabled) {
+  background: none;
+  border-color: transparent;
+  opacity: 1;
 }
 
 .solve-banner {
@@ -52,7 +74,16 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: v
   font-size: var(--text-sm);
   margin-bottom: var(--space-2);
 }
+/* Sticky within `.timeline-pane`'s own scroll container (P1 #3): the banner
+ * used to sit only at the very top of the timeline, so on a long/scrolled
+ * trip the one visible signal that edits haven't been applied yet could
+ * scroll out of view entirely. Pinning it keeps the required next action
+ * (Regenerate) on screen for as long as the itinerary stays stale, without
+ * adding any new, more intrusive notification. */
 .stale-banner {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -65,6 +96,22 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: v
   margin-bottom: var(--space-2);
 }
 .stale-banner button { flex-shrink: 0; }
+
+/* Empty-trip guidance (P1 #4): shown instead of N repeated "nothing
+ * scheduled" boxes when the trip has no schedulable places at all — an
+ * informational next-step, not a warning, so it borrows the same
+ * accent-toned treatment as `.solve-banner` rather than the warning/danger
+ * tones used for actual problems. */
+.empty-trip-hint {
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+.empty-trip-hint strong { color: inherit; }
 
 /* Toast stack (P1 #5) — see ToastStack.tsx. The stack itself is the fixed,
  * centered column; each `.toast` row lays out its message + dismiss button. */
@@ -186,6 +233,20 @@ button.toast-dismiss:hover:not(:disabled) {
 .first-run-or {
   margin: 0;
 }
+/* First-run steps (P1 #4): an explicit ordered list rather than folding the
+ * loop into the pitch paragraph — the point is to make "what do I do next"
+ * unmissable, and a numbered list reads as concrete steps in a way prose
+ * doesn't. */
+.first-run-steps {
+  margin: 0;
+  padding-left: var(--space-5);
+  max-width: 56ch;
+  font-size: var(--text-sm);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
 .sample-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -302,4 +363,68 @@ button.toast-dismiss:hover:not(:disabled) {
 }
 .car-only-toggle:hover {
   color: var(--text);
+}
+
+/* Error-boundary crash fallback (release audit BLOCKER #2) — shared shell
+ * used by both the root boundary (App.tsx) and the map-scoped one
+ * (MapView.tsx). Plain tokens + native elements only: this has to render
+ * correctly with the store (and possibly the rest of the app) in a broken
+ * state, so it can't lean on any component-specific styling elsewhere. */
+.crash-fallback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 480px;
+  margin: var(--space-8) auto;
+  padding: var(--space-6);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text);
+}
+.crash-fallback h2 {
+  margin: 0;
+}
+.crash-fallback-message p {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+}
+.crash-fallback-message p:last-child {
+  margin-bottom: 0;
+}
+.crash-fallback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.crash-fallback-details summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.crash-fallback-details pre {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
+
+/* Map-scoped fallback fills the map pane it replaces (see `.map-view` in
+ * map.css) instead of the page-centred layout `.crash-fallback` uses at the
+ * root, and centers its (smaller) card inside that space. */
+.crash-fallback-map-pane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-app);
+}
+.crash-fallback-map-pane .crash-fallback {
+  margin: 0;
+  max-width: 400px;
 }

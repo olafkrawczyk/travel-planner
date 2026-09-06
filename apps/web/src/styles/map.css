@@ -96,6 +96,18 @@
 .map-marker.base > * { font-weight: 800; }
 .map-marker.base .hotel-glyph { font-size: var(--text-base); line-height: 1; }
 .map-marker.unscheduled { border: 2px dashed var(--border-strong); background: transparent; color: var(--text-muted); }
+/* Needs-a-location hotel (P1 #5): a static dashed warning ring rather than
+ * an animation — persistent and visible without depending on motion (which
+ * `prefers-reduced-motion` would otherwise have to suppress, see base.css). */
+.map-marker.base.needs-location {
+  border-color: var(--warning);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4), 0 0 0 2px var(--warning);
+}
+.map-marker-badge-warning {
+  background: var(--warning-subtle);
+  border-color: var(--warning);
+  color: var(--warning-text);
+}
 .map-marker.hovered, .map-marker:hover, .map-marker:focus-visible { transform: rotate(-45deg) scale(1.35); z-index: 5; }
 /* Keyboard focus (P0 #3): same outline treatment as .day-strip-item, so
  * markers read as part of one consistent focus language across the app. */

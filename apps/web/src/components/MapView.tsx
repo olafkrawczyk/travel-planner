@@ -3,9 +3,21 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Category, Itinerary, Place, Trip } from "@app/domain";
 import { BASE_MARKER_COLOR, dayColor, useStore } from "../store";
+import { hotelNeedsLocation } from "./StaysPanel";
+import { ErrorBoundary, CrashFallbackShell, type CrashFallbackProps } from "./ErrorBoundary";
 
+/**
+ * Required attribution (release audit BLOCKER #1). OpenFreeMap's usage
+ * policy requires the credit "OpenFreeMap © OpenMapTiles Data from
+ * OpenStreetMap" verbatim; it says this is added automatically with
+ * MapLibre, but that only happens when the style JSON's sources carry an
+ * `attribution` field — fetching the Liberty style directly shows its
+ * `openmaptiles`/`ne2_shaded` sources do NOT, so nothing here is automatic.
+ * All three attributions below are therefore explicit `customAttribution`,
+ * alongside the pre-existing OSM/Photon credits this string already carried.
+ */
 const OSM_ATTR =
-  '<a href="https://www.openstreetmap.org/copyright" target="_blank">© OpenStreetMap</a> contributors · <a href="https://photon.komoot.io" target="_blank">geocoding by Photon</a> contributors';
+  '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors · <a href="https://photon.komoot.io" target="_blank">geocoding by Photon</a> contributors';
 
 /** Small glyph shown as a secondary corner badge on non-hotel markers, so
  *  category survives as information without a second competing colour
@@ -131,10 +143,39 @@ function baseCenter(trip: Trip | null): [number, number] {
   return place ? [place.lng, place.lat] : [139.7671, 35.6812];
 }
 
+/**
+ * Map-scoped crash fallback (release audit BLOCKER #2). `MapView` is by far
+ * the most imperative, most crash-prone piece of the UI — direct maplibre-gl
+ * DOM/WebGL setup in effects, manual marker DOM construction — so it gets its
+ * own boundary (wired up at the bottom of this file) rather than relying
+ * solely on the root one in App.tsx. That way a map failure takes down only
+ * the map pane: the timeline, stays panel and place editor around it (all
+ * siblings of `<MapView/>` in TripScreen) keep working, and the user's
+ * itinerary is still visible and editable without the map.
+ */
+function MapCrashFallback({ error, errorInfo, retry }: CrashFallbackProps) {
+  return (
+    <div className="map-view crash-fallback-map-pane">
+      <CrashFallbackShell
+        title="The map couldn't be displayed"
+        message={
+          <p>
+            Your trip and itinerary are unaffected — only the map failed to render. This can happen
+            if your browser or device doesn't support the map's graphics requirements (WebGL).
+          </p>
+        }
+        error={error}
+        errorInfo={errorInfo}
+        actions={<button onClick={retry}>Try showing the map again</button>}
+      />
+    </div>
+  );
+}
+
 /** MapLibre map with OpenFreeMap tiles, day-coloured numbered markers (with a
  *  small category glyph badge) and matching route lines, hover tooltips and
  *  hover cross-highlighting, click-to-add and right-click-to-add. */
-export function MapView() {
+function MapViewInner() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker[]>([]);
@@ -178,7 +219,16 @@ export function MapView() {
       zoom: 11,
       attributionControl: false,
     });
-    map.addControl(new maplibregl.AttributionControl({ customAttribution: OSM_ATTR }));
+    // `compact: false` forces the control to stay expanded at every viewport
+    // width. MapLibre's default (`compact` unset) auto-collapses to an
+    // unlabelled "i" button on any map narrower than 640px — which is most
+    // phones — the moment the map is first panned; a required credit that
+    // vanishes into an icon after one gesture isn't reliably "visible in the
+    // UI" on mobile, so this trades a little screen space for the credit
+    // actually staying on screen everywhere.
+    map.addControl(
+      new maplibregl.AttributionControl({ customAttribution: OSM_ATTR, compact: false }),
+    );
     map.addControl(new maplibregl.NavigationControl(), "bottom-right");
     // Suppress the browser's default context menu on the map canvas.
     map.getCanvas().addEventListener("contextmenu", (e) => e.preventDefault());
@@ -356,11 +406,16 @@ export function MapView() {
         // Hotels (by category) are the lodging markers — 🛏 glyph, distinct
         // base styling. `dwellMin === 0` is only the legacy base heuristic.
         const isHotel = isHotelPlace(place);
+        // P1 #5: a hotel created from the Stays panel at a placeholder
+        // location stays visibly flagged, here and in StaysPanel's stay
+        // rows, until it's actually repositioned — see hotelNeedsLocation.
+        const needsLocation = isHotel && hotelNeedsLocation(place);
         const el = document.createElement("div");
         el.className =
           "map-marker" +
           (isHotel ? " base" : "") +
-          (!isHotel && dayIndex < 0 ? " unscheduled" : "");
+          (!isHotel && dayIndex < 0 ? " unscheduled" : "") +
+          (needsLocation ? " needs-location" : "");
         // Unscheduled non-hotel places get no inline background at all —
         // `color` is null for them, so the CSS "unscheduled" (transparent,
         // dashed) styling shows through instead of being masked.
@@ -392,16 +447,19 @@ export function MapView() {
         el.tabIndex = 0;
         el.setAttribute("role", "button");
         const dayLabel = isHotel ? "hotel" : dayIndex >= 0 ? `day ${dayIndex + 1}` : "unscheduled";
+        const needsLocationSuffix = needsLocation ? ", needs a location" : "";
         el.setAttribute(
           "aria-label",
-          isHotel ? `${place.name}, hotel` : `${place.name}, ${CATEGORY_LABEL[place.category]}, ${dayLabel}`,
+          isHotel
+            ? `${place.name}, hotel${needsLocationSuffix}`
+            : `${place.name}, ${CATEGORY_LABEL[place.category]}, ${dayLabel}`,
         );
         const showTooltip = () => {
           const tooltip = tooltipRef.current;
           if (!tooltip) return;
           const pt = map.project([place.lng, place.lat]);
           tooltip.textContent = isHotel
-            ? `Hotel · ${place.name}`
+            ? `Hotel · ${place.name}${needsLocation ? " — needs a location" : ""}`
             : place.name + (dayIndex >= 0 ? ` (day ${dayIndex + 1})` : " (unscheduled)");
           tooltip.style.left = `${pt.x}px`;
           tooltip.style.top = `${pt.y}px`;
@@ -449,6 +507,15 @@ export function MapView() {
           const badge = document.createElement("span");
           badge.className = "map-marker-badge";
           badge.textContent = CATEGORY_GLYPH[place.category] ?? "•";
+          badge.setAttribute("aria-hidden", "true");
+          wrap.appendChild(badge);
+        } else if (needsLocation) {
+          // Same corner-badge slot the category glyph uses on non-hotel
+          // markers, repurposed here — the accessible name above already
+          // says "needs a location" in words, so this glyph stays decorative.
+          const badge = document.createElement("span");
+          badge.className = "map-marker-badge map-marker-badge-warning";
+          badge.textContent = "❗";
           badge.setAttribute("aria-hidden", "true");
           wrap.appendChild(badge);
         }
@@ -499,5 +566,16 @@ export function MapView() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Public export: `MapViewInner` wrapped in its own error boundary — see
+ *  `MapCrashFallback`'s doc comment above for why the map gets one separate
+ *  from the app-wide boundary in App.tsx. */
+export function MapView() {
+  return (
+    <ErrorBoundary fallback={(props) => <MapCrashFallback {...props} />}>
+      <MapViewInner />
+    </ErrorBoundary>
   );
 }

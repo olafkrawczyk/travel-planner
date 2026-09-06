@@ -1,6 +1,41 @@
 import Dexie, { type Table } from "dexie";
 import { newTripId, parseTrip, schemaVersion, type Trip } from "@app/domain";
-import { RepositoryError, type TripRepository, type ListResult } from "./repository";
+import {
+  RepositoryError,
+  type TripRepository,
+  type ListResult,
+  type PutResult,
+  type TripWithRevision,
+} from "./repository";
+
+/** Stored row shape. `rev` is the storage-level revision used for cross-tab
+ *  write-conflict detection (see `PutResult` in repository.ts) — deliberately
+ *  NOT part of the `Trip` domain object. Optional because rows written before
+ *  this field existed have none; `computeNextRevision` treats a missing `rev`
+ *  as revision 0. */
+interface StoredRow {
+  id: string;
+  json: string;
+  rev?: number;
+}
+
+/**
+ * Pure decision behind `LocalRepository.put`'s conflict detection, pulled out
+ * so it's covered by a plain unit test (no Dexie/IndexedDB needed) — see
+ * localRepository.test.ts. `currentRev` is whatever is already stored
+ * (`undefined` for a brand-new id, or a legacy row with no `rev` field yet);
+ * `expectedRev` is what the caller last read (`undefined` means "don't
+ * check"). The next revision always increments off the *actual* stored
+ * value, never off the caller's possibly-stale `expectedRev`.
+ */
+export function computeNextRevision(
+  currentRev: number | undefined,
+  expectedRev: number | undefined,
+): PutResult {
+  const baseline = currentRev ?? 0;
+  const conflict = expectedRev !== undefined && expectedRev !== baseline;
+  return { rev: baseline + 1, conflict };
+}
 
 /**
  * Local IndexedDB repository on Dexie. Every stored record carries
@@ -9,10 +44,14 @@ import { RepositoryError, type TripRepository, type ListResult } from "./reposit
  */
 export class LocalRepository implements TripRepository {
   private db: Dexie;
-  private trips: Table<{ id: string; json: string }, string>;
+  private trips: Table<StoredRow, string>;
 
   constructor(name = "travel-planner") {
     this.db = new Dexie(name);
+    // Schema-wise this is still just `id` as the primary key — `rev` lives on
+    // the row as plain data (like `json` already does), not as an index, so
+    // adding it needs no version bump and every pre-existing row keeps
+    // loading unchanged (it simply has no `rev` field yet).
     this.db.version(1).stores({ trips: "id" });
     this.trips = this.db.table("trips");
   }
@@ -35,10 +74,31 @@ export class LocalRepository implements TripRepository {
     return row ? safeParse(row.json) : undefined;
   }
 
-  async put(trip: Trip): Promise<void> {
+  async getWithRevision(id: string): Promise<TripWithRevision | undefined> {
+    const row = await this.trips.get(id);
+    if (!row) return undefined;
+    const trip = safeParse(row.json);
+    return trip ? { trip, rev: row.rev ?? 0 } : undefined;
+  }
+
+  /**
+   * See `TripRepository.put`'s doc comment for the conflict-detection
+   * contract. Read-current-row + write-next-row runs inside one Dexie
+   * transaction so two `put` calls racing in the SAME tab can't compute the
+   * same "next" revision off a stale read — cross-TAB races (the actual
+   * concern here) can't be closed this way (each tab is a separate process
+   * with no shared lock), which is exactly why this returns a conflict flag
+   * for the caller to surface, rather than pretending the race can't happen.
+   */
+  async put(trip: Trip, expectedRev?: number): Promise<PutResult> {
     // Validate on write as well, so corrupt data can never enter the store.
     const valid = parseTrip(trip);
-    await this.trips.put({ id: valid.id, json: JSON.stringify(valid) });
+    return this.db.transaction("rw", this.trips, async () => {
+      const existing = await this.trips.get(valid.id);
+      const result = computeNextRevision(existing?.rev, expectedRev);
+      await this.trips.put({ id: valid.id, json: JSON.stringify(valid), rev: result.rev });
+      return result;
+    });
   }
 
   async delete(id: string): Promise<void> {

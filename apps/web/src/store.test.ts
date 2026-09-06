@@ -10,9 +10,23 @@ vi.mock("./worker/solverClient", () => ({
   },
 }));
 vi.mock("@app/storage", () => ({
+  // Fake revisions per id, mirroring the real LocalRepository's cross-tab
+  // conflict-detection contract (packages/storage/src/localRepository.ts) —
+  // store.ts's `persist()` now always reads `.rev`/`.conflict` off `put`'s
+  // result, so a mock that resolved `undefined` here would throw.
   LocalRepository: class {
-    async put(): Promise<void> {}
+    private revs = new Map<string, number>();
+    async put(trip: { id: string }, expectedRev?: number): Promise<{ rev: number; conflict: boolean }> {
+      const current = this.revs.get(trip.id) ?? 0;
+      const conflict = expectedRev !== undefined && expectedRev !== current;
+      const rev = current + 1;
+      this.revs.set(trip.id, rev);
+      return { rev, conflict };
+    }
     async get(): Promise<undefined> {
+      return undefined;
+    }
+    async getWithRevision(): Promise<undefined> {
       return undefined;
     }
     async list(): Promise<{ trips: never[]; failedCount: number }> {
@@ -470,6 +484,71 @@ describe("persist error handling (save status)", () => {
       expect(useStore.getState().saveState).toBe("saved");
     });
     expect(useStore.getState().saveError).toBeNull();
+  });
+});
+
+// Release audit item 3: two tabs open on the same trip each overwrite the
+// whole stored row on save, with nothing to notice one clobbered the other's
+// edit. `currentTripRev` + `repo.put`'s `expectedRev`/`conflict` contract
+// (packages/storage) turns that into a toast instead of silent data loss.
+describe("cross-tab write-conflict detection", () => {
+  it("flags a stale save with a persistent toast, and still saves this tab's edit", async () => {
+    const repo = new LocalRepository();
+    const trip = multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+    const { rev } = await repo.put(trip); // tab A's baseline read
+    useStore.setState({
+      currentTrip: trip,
+      currentTripRev: rev,
+      repo,
+      toast: null,
+      toasts: [],
+      saveState: "idle",
+      saveError: null,
+      past: [],
+      future: [],
+    });
+
+    // Another tab (same underlying row) saves a change tab A never saw.
+    await repo.put({ ...trip, name: "Changed elsewhere" });
+
+    // Tab A now saves its own edit, still on its stale baseline revision.
+    useStore.getState().mutateTrip((draft) => {
+      draft.name = "Changed here";
+    });
+
+    await vi.waitFor(() => {
+      expect(useStore.getState().toast).toMatch(/another tab/i);
+    });
+    // Last write wins, but the earlier clobber is now a detectable event —
+    // not silent — and this tab's own edit is not lost either.
+    expect(useStore.getState().currentTrip?.name).toBe("Changed here");
+    expect(useStore.getState().toasts.at(-1)?.kind).toBe("error"); // persists until dismissed
+  });
+
+  it("no conflict (and no extra toast) when nothing else touched the trip meanwhile", async () => {
+    const repo = new LocalRepository();
+    const trip = multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+    const { rev } = await repo.put(trip);
+    useStore.setState({
+      currentTrip: trip,
+      currentTripRev: rev,
+      repo,
+      toast: null,
+      toasts: [],
+      saveState: "idle",
+      saveError: null,
+      past: [],
+      future: [],
+    });
+
+    useStore.getState().mutateTrip((draft) => {
+      draft.name = "Renamed";
+    });
+
+    await vi.waitFor(() => {
+      expect(useStore.getState().saveState).toBe("saved");
+    });
+    expect(useStore.getState().toast).toBeNull();
   });
 });
 
