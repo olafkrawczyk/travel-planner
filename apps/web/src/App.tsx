@@ -4,12 +4,13 @@ import { useStore } from "./store";
 import { TripList } from "./components/TripList";
 import { TripScreen } from "./components/TripScreen";
 import { DevPanel } from "./components/DevPanel";
+import { LiveRegion } from "./components/LiveRegion";
+import { ToastStack } from "./components/ToastStack";
 import { decodeTrip, FRAGMENT_PREFIX } from "./share";
 
 export function App() {
   const init = useStore((s) => s.init);
   const currentTrip = useStore((s) => s.currentTrip);
-  const toast = useStore((s) => s.toast);
   const setToast = useStore((s) => s.setToast);
   const undo = useStore((s) => s.undo);
   const redo = useStore((s) => s.redo);
@@ -69,17 +70,12 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo, regenerate, toggleDevPanel]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4000);
-    return () => clearTimeout(t);
-  }, [toast, setToast]);
-
   return (
     <>
+      <LiveRegion />
       {currentTrip ? <TripScreen /> : <TripList />}
       <DevPanel />
-      {toast && <div className="toast">{toast}</div>}
+      <ToastStack />
     </>
   );
 }

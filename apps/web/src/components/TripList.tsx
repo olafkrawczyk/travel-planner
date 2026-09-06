@@ -77,6 +77,46 @@ const SAMPLES: SampleDescriptor[] = [
   },
 ];
 
+/** Delete confirms twice removed automatically. */
+const DELETE_CONFIRM_TIMEOUT_MS = 4000;
+
+/**
+ * Delete is destructive and irreversible (the store's `deleteTrip` has no
+ * undo path) — this makes it a deliberate two-step action instead of a
+ * single click, without leaving the list markup for a native `confirm()`
+ * dialog (P0 #1). `aria-live="polite"` on the button itself means the label
+ * change ("Delete" → "Really delete?") gets announced to screen readers.
+ */
+function DeleteTripButton({ name, onConfirm }: { name: string; onConfirm: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  function handleClick() {
+    if (!confirming) {
+      setConfirming(true);
+      timerRef.current = setTimeout(() => setConfirming(false), DELETE_CONFIRM_TIMEOUT_MS);
+      return;
+    }
+    clearTimeout(timerRef.current);
+    setConfirming(false);
+    onConfirm();
+  }
+
+  return (
+    <button
+      className={"danger" + (confirming ? " confirming" : "")}
+      onClick={handleClick}
+      onBlur={() => setConfirming(false)}
+      aria-live="polite"
+      title={confirming ? `Click again to permanently delete "${name}"` : "Delete trip"}
+    >
+      {confirming ? "Really delete?" : "Delete"}
+    </button>
+  );
+}
+
 /** Trip list + creation form + JSON export/import (tasks 7.1 creation, 7.5). */
 export function TripList() {
   const trips = useStore((s) => s.trips);
@@ -216,9 +256,7 @@ export function TripList() {
                   <button onClick={() => void handleExport(t.id, t.name)} title="Export as JSON">
                     Export
                   </button>
-                  <button className="danger" onClick={() => void deleteTrip(t.id)} title="Delete trip">
-                    Delete
-                  </button>
+                  <DeleteTripButton name={t.name} onConfirm={() => void deleteTrip(t.id)} />
                 </div>
               </li>
             ))}

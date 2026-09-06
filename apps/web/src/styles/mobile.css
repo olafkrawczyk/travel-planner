@@ -16,7 +16,9 @@
     bottom: 0;
     left: 0;
     right: 0;
-    height: 50vh;
+    /* Draggable/keyboard-resizable (P1 #8, see TripScreen.tsx) — falls back
+     * to the original fixed 50vh if the custom property is ever unset. */
+    height: var(--sheet-height, 50vh);
     background: var(--bg-surface);
     border-top: 1px solid var(--border);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
@@ -27,13 +29,34 @@
     flex-direction: column;
   }
 
+  /* The draggable/keyboard-operable resize handle itself (see TripScreen.tsx
+   * for the pointer/keyboard wiring — `role="separator"`). Sized as a full
+   * hit-target row rather than just the thin visible pill, drawn via
+   * ::before, so touch users have something bigger than 4px tall to grab. */
   .bottom-sheet-handle {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 28px;
+    flex-shrink: 0;
+    cursor: ns-resize;
+    touch-action: none; /* let pointer drags resize instead of scrolling the page */
+  }
+  .bottom-sheet-handle::before {
+    content: "";
     width: 40px;
     height: 4px;
     background: var(--border-strong);
     border-radius: var(--radius-full);
-    margin: var(--space-2) auto;
-    flex-shrink: 0;
+  }
+  .bottom-sheet-handle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  @media (pointer: coarse) {
+    .bottom-sheet-handle {
+      height: 44px;
+    }
   }
 }

@@ -108,7 +108,7 @@
   border: 1px dashed var(--warning);
 }
 .day-strip-item.empty .day-strip-status {
-  color: var(--warning);
+  color: var(--warning-text);
   font-weight: 600;
 }
 

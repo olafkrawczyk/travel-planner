@@ -16,6 +16,13 @@
   color: var(--text);
 }
 .trip-actions { display: flex; gap: var(--space-1); }
+/* Delete's two-step inline confirm (P0 #1): the danger button gets a filled,
+ * unmistakably-different look for its "really delete?" state. */
+.trip-actions .danger.confirming {
+  background: var(--danger-subtle);
+  border-color: var(--danger);
+  font-weight: 600;
+}
 .import-row { margin-top: var(--space-4); }
 
 .trip-screen { display: flex; flex-direction: column; height: 100dvh; }

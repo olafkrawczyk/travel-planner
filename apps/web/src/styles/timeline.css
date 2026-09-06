@@ -188,7 +188,21 @@
 }
 .stop-times { flex: none; font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
 
-.icon-btn { padding: var(--space-1) var(--space-2); font-size: var(--text-sm); }
+.icon-btn { padding: var(--space-1) var(--space-2); font-size: var(--text-sm); position: relative; }
+/* Bigger tap target without ballooning the visual button (P1 #9): an
+ * invisible expansion of the hit area, touch/coarse pointers only — the day
+ * header packs five of these plus two time inputs edge-to-edge, and the
+ * ~24-28px visual size is well under the ~44px touch guideline. */
+@media (pointer: coarse) {
+  .icon-btn::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
+  .day-header {
+    gap: var(--space-3);
+  }
+}
 .icon-btn.active { background: var(--accent-subtle); border-color: var(--accent); color: var(--accent); }
 .move-menu { width: auto; font-size: var(--text-xs); padding: var(--space-1); }
 .track-stop-content .icon-btn,
@@ -257,7 +271,7 @@
   border-radius: var(--radius-lg);
   padding: var(--space-3);
 }
-.unscheduled-tray h3 { margin: 0 0 var(--space-2); font-size: var(--text-base); color: var(--warning); }
+.unscheduled-tray h3 { margin: 0 0 var(--space-2); font-size: var(--text-base); color: var(--warning-text); }
 .unscheduled-tray ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .unscheduled-tray li { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .unscheduled-tray .explanation { flex-basis: 100%; margin: 0; font-size: var(--text-sm); color: var(--text-muted); }

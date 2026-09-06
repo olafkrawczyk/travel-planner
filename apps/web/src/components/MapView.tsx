@@ -22,6 +22,21 @@ const CATEGORY_GLYPH: Record<Category, string> = {
   other: "•",
 };
 
+/** Text form of the category glyph above, for the marker's accessible name
+ *  (P0 #3) — the glyph itself stays `aria-hidden`, so category has to reach
+ *  screen-reader users some other way. */
+const CATEGORY_LABEL: Record<Category, string> = {
+  museum: "museum",
+  viewpoint: "viewpoint",
+  cafe: "cafe",
+  restaurant: "restaurant",
+  shop: "shop",
+  park: "park",
+  temple: "temple",
+  hotel: "hotel",
+  other: "place",
+};
+
 /** Hotels (by category) are the lodging/base markers; `dwellMin === 0` is
  *  the legacy base heuristic kept for places without an explicit category. */
 function isHotelPlace(place: Place): boolean {
@@ -124,6 +139,11 @@ export function MapView() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+  /** placeId → marker pin element, kept across renders so hover/focus (see
+   *  the highlight effect below) can toggle a class on the existing DOM
+   *  nodes instead of the marker-rebuild effect tearing them all down and
+   *  recreating them on every hover (P0 #4). */
+  const elByPlaceId = useRef<Map<string, HTMLElement>>(new Map());
 
   /** Right-click context menu state; mirrored in a ref so map event handlers see the latest value. */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; lat: number; lng: number } | null>(
@@ -317,13 +337,19 @@ export function MapView() {
     useStore.setState({ focusDayId: null });
   }, [focusDayId, trip, itinerary]);
 
-  // Rebuild markers when the itinerary, trip or hover state changes.
+  // Rebuild the marker SET when the places actually shown change — trip,
+  // itinerary, hidden days or the hotel-marker toggle. Deliberately does NOT
+  // depend on `hoveredPlaceId`/focus: on the 100-place sample that would tear
+  // down and recreate ~100 DOM nodes on every mouse-enter (P0 #4). Hover and
+  // keyboard-focus cross-highlighting are handled by the separate effect
+  // below instead, which just toggles a class on the elements built here.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !trip) return;
     // A rebuild orphans the hovered element; start from a hidden tooltip.
     if (tooltipRef.current) tooltipRef.current.hidden = true;
     for (const m of markerRef.current) m.remove();
+    elByPlaceId.current.clear();
     markerRef.current = markersFor(trip, itinerary, showBases)
       .filter(({ dayId }) => !dayId || !hiddenDays.has(dayId)) // hidden days: no markers
       .map(({ place, dayIndex, number, color }) => {
@@ -358,26 +384,57 @@ export function MapView() {
           label.className = isHotel ? "hotel-glyph" : "";
           el.appendChild(label);
         }
-        if (place.id === hoveredPlaceId) el.classList.add("hovered");
+        // Keyboard/screen-reader access (P0 #3): a bare hover/click-only div
+        // is otherwise entirely inert without a mouse. The day number and
+        // category glyph are visual-only (the glyph badge stays
+        // aria-hidden below), so both have to be folded into the accessible
+        // name instead.
+        el.tabIndex = 0;
+        el.setAttribute("role", "button");
+        const dayLabel = isHotel ? "hotel" : dayIndex >= 0 ? `day ${dayIndex + 1}` : "unscheduled";
+        el.setAttribute(
+          "aria-label",
+          isHotel ? `${place.name}, hotel` : `${place.name}, ${CATEGORY_LABEL[place.category]}, ${dayLabel}`,
+        );
+        const showTooltip = () => {
+          const tooltip = tooltipRef.current;
+          if (!tooltip) return;
+          const pt = map.project([place.lng, place.lat]);
+          tooltip.textContent = isHotel
+            ? `Hotel · ${place.name}`
+            : place.name + (dayIndex >= 0 ? ` (day ${dayIndex + 1})` : " (unscheduled)");
+          tooltip.style.left = `${pt.x}px`;
+          tooltip.style.top = `${pt.y}px`;
+          tooltip.hidden = false;
+        };
+        const hideTooltip = () => {
+          if (tooltipRef.current) tooltipRef.current.hidden = true;
+        };
         el.addEventListener("mouseenter", () => {
           setHovered(place.id);
-          const tooltip = tooltipRef.current;
-          if (tooltip) {
-            const pt = map.project([place.lng, place.lat]);
-            tooltip.textContent = isHotel
-              ? `Hotel · ${place.name}`
-              : place.name + (dayIndex >= 0 ? ` (day ${dayIndex + 1})` : " (unscheduled)");
-            tooltip.style.left = `${pt.x}px`;
-            tooltip.style.top = `${pt.y}px`;
-            tooltip.hidden = false;
-          }
+          showTooltip();
         });
         el.addEventListener("mouseleave", () => {
           setHovered(null);
-          if (tooltipRef.current) tooltipRef.current.hidden = true;
+          hideTooltip();
+        });
+        // Keyboard focus drives the same cross-highlighting hover does
+        // (setHovered is the one signal both the map and the timeline read).
+        el.addEventListener("focus", () => {
+          setHovered(place.id);
+          showTooltip();
+        });
+        el.addEventListener("blur", () => {
+          setHovered(null);
+          hideTooltip();
         });
         el.addEventListener("click", (e) => {
           e.stopPropagation();
+          openPlaceEditor(place.id);
+        });
+        el.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+          e.preventDefault(); // matches the click handler; also stops the page from scrolling on Space
           openPlaceEditor(place.id);
         });
         // The pin's own -45° rotation (see CSS) has to live on a plain child,
@@ -395,11 +452,24 @@ export function MapView() {
           badge.setAttribute("aria-hidden", "true");
           wrap.appendChild(badge);
         }
+        elByPlaceId.current.set(place.id, el);
         return new maplibregl.Marker({ element: wrap })
           .setLngLat([place.lng, place.lat])
           .addTo(map);
       });
-  }, [trip, itinerary, hoveredPlaceId, hiddenDays, showBases, setHovered, openPlaceEditor]);
+    // Apply whatever is currently hovered/focused to the freshly built set —
+    // the highlight effect below won't re-run just because the set changed.
+    const currentHover = useStore.getState().hoveredPlaceId;
+    if (currentHover) elByPlaceId.current.get(currentHover)?.classList.add("hovered");
+  }, [trip, itinerary, hiddenDays, showBases, setHovered, openPlaceEditor]);
+
+  // Hover/focus cross-highlight (P0 #4): toggle a class on the marker
+  // elements the effect above already built, rather than rebuilding them.
+  useEffect(() => {
+    for (const [placeId, el] of elByPlaceId.current) {
+      el.classList.toggle("hovered", placeId === hoveredPlaceId);
+    }
+  }, [hoveredPlaceId]);
 
   return (
     <div ref={containerRef} className="map-view">

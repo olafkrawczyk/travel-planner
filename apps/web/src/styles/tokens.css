@@ -23,7 +23,16 @@
   
   --warning: #f59e0b;
   --warning-subtle: #fffbeb;
-  
+  /* Text-on-subtle variant (P1 #6): --warning at #f59e0b is only ~2.1:1
+   * against --warning-subtle (and ~2.15:1 against white/--bg-surface),
+   * well under the 4.5:1 AA floor for normal text — it was never meant to
+   * carry text, only borders/icon fills, where WCAG's non-text 3:1 rule
+   * applies instead. --warning-text is the same hue, darkened, for exactly
+   * the elements that set text in that colour (badge-warning, the empty-day
+   * label, the unscheduled-tray heading): 6.84:1 on --warning-subtle and
+   * 7.09:1 on white. --warning itself is untouched for borders/icon fills. */
+  --warning-text: #92400e;
+
   /* Badges / statuses */
   --badge-bg: #f1f5f9;
   --badge-text: #475569;
@@ -140,7 +149,12 @@
     
     --warning: #f59e0b;
     --warning-subtle: #78350f;
-    
+    /* Same fix as the light theme above: #f59e0b on #78350f is ~4.2:1, just
+     * under AA. --warning-text is lightened instead of darkened here so it
+     * still reads against the dark surfaces it sits on: 6.29:1 on
+     * --warning-subtle, 10.15:1 on --bg-surface. */
+    --warning-text: #fcd34d;
+
     --badge-bg: #334155;
     --badge-text: #cbd5e1;
     --badge-border: #475569;

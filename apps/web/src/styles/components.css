@@ -58,7 +58,7 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: v
   gap: var(--space-2);
   background: var(--warning-subtle);
   border: 1px solid var(--warning);
-  color: var(--warning);
+  color: var(--warning-text);
   border-radius: var(--radius-lg);
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
@@ -66,17 +66,52 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: v
 }
 .stale-banner button { flex-shrink: 0; }
 
-.toast {
+/* Toast stack (P1 #5) — see ToastStack.tsx. The stack itself is the fixed,
+ * centered column; each `.toast` row lays out its message + dismiss button. */
+.toast-stack {
   position: fixed;
   bottom: var(--space-4);
   left: 50%;
   transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100vw - var(--space-8));
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   background: var(--text);
   color: var(--bg-app);
   border-radius: var(--radius-lg);
   padding: var(--space-2) var(--space-4);
-  z-index: 100;
   font-size: var(--text-sm);
+}
+.toast-error {
+  background: var(--danger);
+  color: var(--text-inverse);
+}
+.toast-message { flex: 1 1 auto; }
+.toast-dismiss {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  padding: 0 var(--space-1);
+  font-size: var(--text-sm);
+  line-height: 1;
+  opacity: 0.8;
+}
+/* Matches the generic `button:hover:not(:disabled)` rule's specificity (type
+ * selector + two pseudo-classes) so this actually wins instead of a stray
+ * light hover box appearing over the dark toast background. */
+button.toast-dismiss:hover:not(:disabled) {
+  background: none;
+  border-color: transparent;
+  opacity: 1;
 }
 
 /* Regenerate */
@@ -202,7 +237,7 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: v
 }
 .badge-warning {
   background: var(--warning-subtle);
-  color: var(--warning);
+  color: var(--warning-text);
   border-color: var(--warning);
 }
 
@@ -230,7 +265,7 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: v
   border: none;
   color: var(--text-muted);
   font-family: inherit;
-  font-size: var(--font-sm);
+  font-size: var(--text-sm);
   cursor: pointer;
   padding: 0;
 }
@@ -259,7 +294,7 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: v
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--font-sm);
+  font-size: var(--text-sm);
   color: var(--text-muted);
   cursor: pointer;
   margin-right: var(--space-3);
