@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Place } from "@app/domain";
 import { recommendHotelAreas, type HotelAreaCandidate, type HotelAreaSegment } from "@app/solver";
 import { dayColor, staysFor, useStore, type Stay } from "../store";
@@ -91,9 +91,18 @@ export function StaysPanel() {
   const dateOf = (idx: number) => trip.days[idx]?.date;
   // Index-aligned with `stays` (both derive segments from the same
   // stayStart/baseEndId day fields — see design.md decision 3/10 of
-  // add-hotel-area-recommendation). Computed inline, same convention as
-  // `staysFor(trip)` above: no memoization, cheap at trip scale.
-  const hotelAreas = recommendHotelAreas(trip);
+  // add-hotel-area-recommendation). Unlike `staysFor` (a cheap array walk),
+  // this runs Weiszfeld iterations plus a k-means split per stay segment —
+  // real work, so it's memoized against exactly the inputs that affect its
+  // result (places, day/stay structure, and the settings its travel-time
+  // estimate reads), not the whole `trip` object, which gets a new identity
+  // on every unrelated edit (immer's `produce` still gives unaffected nested
+  // fields — `places`/`days`/`settings` — stable references across those, so
+  // this only recomputes when one of them actually changes).
+  const hotelAreas = useMemo(
+    () => recommendHotelAreas(trip),
+    [trip.places, trip.days, trip.settings],
+  );
 
   /** Create a new hotel place and assign it to stay `idx` in one undoable
    *  mutation. The user repositions it via the place editor. */

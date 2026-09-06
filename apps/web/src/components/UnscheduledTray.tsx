@@ -27,16 +27,19 @@ export interface UnscheduledCopy {
   /** Concrete next step(s) the user can take, or "" when there's nothing more specific to add. */
   actions: string;
   /**
-   * True when `why` is a best guess rather than a firm diagnosis. Exists
-   * because of a known solver limitation (see matrix.ts:427's `reasonFor`):
-   * ANY place with non-empty `openingHours` is classified `window_conflict`
-   * regardless of the real cause, so that reason code alone is not
-   * trustworthy. `explain.ts`'s `explainWindowConflict` still probes real
-   * per-day appointment/window data before writing its explanation string,
-   * and every branch that names a concrete appointment time or opening
-   * window is grounded in that real data — only its last-resort fallback (no
-   * day's real data pinned down a conflict) carries no such guarantee, so
-   * only that fallback is marked tentative here.
+   * True when `why` could only confirm the *category* (a window/appointment
+   * conflict) without naming which specific day or window is the blocker —
+   * NOT a doubt about the category itself. The reason code is trustworthy:
+   * `packages/solver/src/explain.ts`'s `classifyUnscheduled` runs a genuine
+   * per-day feasibility probe (does the place fit anywhere once its window
+   * is set aside?) rather than guessing from the place's static shape, so
+   * `window_conflict` here always means hours really are the blocker.
+   * `explainWindowConflict`'s own per-day probe (used only to write the
+   * human-readable sentence) is cruder — it estimates arrival straight from
+   * the day's start/base rather than accounting for whatever else is
+   * already scheduled that day — so it can occasionally fail to pin down
+   * *which* day/window is at fault even though the category is certain.
+   * That narrower gap is the only thing this flag still hedges.
    */
   tentative: boolean;
 }
@@ -80,8 +83,8 @@ export function unscheduledCopy(reason: UnscheduledReason, explanation: string |
   // window_conflict
   if (why === NO_WINDOW_MATCHED) {
     return {
-      why: "This is flagged as an opening-hours or appointment conflict, but that may not be the real reason — it can also mean every day is simply full.",
-      actions: "Check its opening hours and any appointment time, or try a day with more free time.",
+      why: "Blocked by its opening hours or an appointment time — the solver confirmed hours are the real cause, but couldn't pin down which day or window specifically.",
+      actions: "Check its opening hours and any appointment time across the trip's days.",
       tentative: true,
     };
   }
@@ -103,13 +106,15 @@ export function unscheduledCopy(reason: UnscheduledReason, explanation: string |
   return { why, actions: "", tentative: false };
 }
 
-/** Short badge label + tone for the reason, honest about `tentative` (a
- *  softer "possible conflict" / warning tone instead of a confident
- *  "conflict" / danger tone — see `UnscheduledCopy.tentative`). */
-export function reasonBadge(reason: UnscheduledReason, tentative: boolean): { label: string; tone: "danger" | "warning" } {
+/** Short badge label + tone for the reason. Every reason code is now backed
+ *  by a real feasibility probe (see `UnscheduledCopy.tentative`'s doc), so
+ *  the badge no longer needs to soften `window_conflict` into a "possible
+ *  conflict" — the remaining `tentative` uncertainty is about explanation
+ *  wording (which day/window), not about whether this category is right. */
+export function reasonBadge(reason: UnscheduledReason): { label: string; tone: "danger" | "warning" } {
   if (reason === "no_time") return { label: "no time", tone: "danger" };
   if (reason === "unreachable") return { label: "no route", tone: "danger" };
-  return tentative ? { label: "possible conflict", tone: "warning" } : { label: "conflict", tone: "danger" };
+  return { label: "conflict", tone: "danger" };
 }
 
 /** Cost of force-inserting a place, computed from data already in hand (no
@@ -159,7 +164,7 @@ export function UnscheduledTray({ itinerary, trip }: { itinerary: Itinerary; tri
         {itinerary.unscheduled.map(({ placeId, reason, explanation }) => {
           const p = placeOf(trip.places, placeId);
           const copy = unscheduledCopy(reason, explanation);
-          const badge = reasonBadge(reason, copy.tentative);
+          const badge = reasonBadge(reason);
           return (
             <li key={placeId}>
               <button className="stop-name" onClick={() => openPlaceEditor(placeId)}>

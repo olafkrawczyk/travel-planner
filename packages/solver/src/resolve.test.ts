@@ -141,4 +141,56 @@ describe("resolve (incremental re-solve)", () => {
     ]);
     expect(itin.days[0]!.stops.map((s) => s.placeId)).toEqual(["a"]);
   });
+
+  // Pins the `reasonFor` root-cause fix (see `explain.ts`'s `classifyUnscheduled`):
+  // the reason must come from an actual feasibility probe, not from whether
+  // the place happens to carry opening-hours data.
+  it("does not report a place with all-day opening hours as a window conflict when it only lacks time", () => {
+    const places = [
+      place({ lat: 35.68, lng: 139.69, id: "big", dwellMin: 200, priority: 1 }),
+      place({
+        lat: 35.68,
+        lng: 139.69,
+        id: "wide",
+        dwellMin: 200,
+        priority: 2,
+        // Open the entire day — opening hours can never be the real reason
+        // this is dropped, only a lack of remaining time can.
+        openingHours: { "2026-04-01": [{ start: "00:00", end: "23:59" }] },
+      }),
+      place({ lat: 35.68, lng: 139.69, id: "baseA", category: "hotel", dwellMin: 0 }),
+    ];
+    // 240-minute day: the must-priority "big" (200 min) is scheduled first,
+    // leaving only 40 min — not enough for "wide"'s own 200-minute dwell,
+    // regardless of its hours.
+    const t = trip({ places, days: [day({ id: "d1", start: "09:00", end: "13:00" })] });
+    const itin = solve({ trip: t, seed: 1, maxIterations: 50, budgetMs: 60_000 });
+    expect(itin.unscheduled).toEqual([
+      { placeId: "wide", reason: "no_time", explanation: expect.any(String) },
+    ]);
+  });
+
+  it("reports a genuine opening-hours conflict as window_conflict, not no_time", () => {
+    const places = [
+      place({ lat: 35.68, lng: 139.69, id: "morning", dwellMin: 60, priority: 1 }),
+      place({
+        lat: 35.68,
+        lng: 139.69,
+        id: "narrow",
+        dwellMin: 60,
+        priority: 2,
+        // A 30-minute window can never fit a 60-minute dwell, no matter when
+        // it is visited — and the day otherwise has hours of slack, so
+        // nothing but the window itself can be the blocker.
+        openingHours: { "2026-04-01": [{ start: "09:00", end: "09:30" }] },
+      }),
+      place({ lat: 35.68, lng: 139.69, id: "baseA", category: "hotel", dwellMin: 0 }),
+    ];
+    const t = trip({ places, days: [day({ id: "d1", start: "09:00", end: "21:00" })] });
+    const itin = solve({ trip: t, seed: 1, maxIterations: 50, budgetMs: 60_000 });
+    expect(itin.unscheduled).toEqual([
+      { placeId: "narrow", reason: "window_conflict", explanation: expect.any(String) },
+    ]);
+    expect(itin.days[0]!.stops.map((s) => s.placeId)).toEqual(["morning"]);
+  });
 });

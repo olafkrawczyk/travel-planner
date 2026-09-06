@@ -19,9 +19,9 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
  * errors from event handlers, timers, or code that throws inside a Promise
  * (e.g. a maplibre `map.on("load", ...)` callback throwing asynchronously).
  * Catching those needs a `window.onerror`/`unhandledrejection` listener,
- * which is a different, broader mechanism than "add an error boundary" — not
- * added here; flagged in the audit report as a follow-up worth considering
- * separately.
+ * which is a different, broader mechanism than "add an error boundary" —
+ * see `globalErrorHandler.ts` (registered once at boot from `main.tsx`) for
+ * that other mechanism.
  */
 
 export interface CrashFallbackProps {

@@ -4,6 +4,13 @@ import { App } from "./App";
 import "./index.css";
 import { registerSW } from "virtual:pwa-register";
 import { useStore } from "./store";
+import { registerGlobalErrorHandlers } from "./globalErrorHandler";
+
+// Catches what React's error boundaries structurally cannot (see
+// ErrorBoundary.tsx's "Known gap" doc comment): a throw inside an async
+// callback or a promise nobody attached a `.catch` to. Registered once, here
+// at boot, for the app's whole lifetime — never inside a component.
+registerGlobalErrorHandlers();
 
 // Ask the browser to make our IndexedDB storage persistent (best-effort, and
 // never load-bearing for boot): without this, trip data can be evicted under

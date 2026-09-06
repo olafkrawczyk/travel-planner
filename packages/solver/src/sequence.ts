@@ -45,16 +45,27 @@ export interface DayWindow {
  * start where the wait is zero-slack), the effective visit start (raw arrival
  * plus any window wait) and the accumulated wait, or null when the visit
  * cannot fit.
+ *
+ * `ignoreWindows` is a diagnostic-only relaxation (never used by the
+ * construction/improvement paths that mutate a real schedule): it treats the
+ * visit as pure dwell-anywhere-on-this-day, dropping both the opening-hours
+ * check and the appointment's fixed start time, while still enforcing that
+ * an appointment can only ever land on its own `day.id` (that's a structural
+ * assignment fact, not a time-of-day window, so relaxing windows must not
+ * relax it). It exists so a caller can ask "is there room on this day at
+ * all, independent of hours?" — see `explain.ts`'s `classifyUnscheduled`.
  */
 export function feasibleVisit(
   place: Place,
   day: { id: string; date?: string },
   earliestArrive: number,
+  ignoreWindows = false,
 ): { rawArrive: number; arrive: number; wait: number } | null {
   let rawArrive = earliestArrive;
   let wait = 0;
   let visitStart = earliestArrive;
   if (place.appointment && place.appointment.dayId !== day.id) return null;
+  if (ignoreWindows) return { rawArrive, arrive: visitStart, wait };
   if (place.appointment) {
     const appt = parseHHMM(place.appointment.start);
     if (earliestArrive > appt) return null;
@@ -105,6 +116,7 @@ export function computeTimes(
   day: DayWindow,
   order: string[],
   relaxBudget = false,
+  ignoreWindows = false,
 ): { feasible: boolean; stops: Stop[]; legs: Leg[]; travelMin: number; waitMin: number; endMin: number } {
   // A day holding a place with `forceDayId === day.id` has its soft time
   // budget relaxed (hard constraints — appointments, opening windows — still
@@ -128,7 +140,7 @@ export function computeTimes(
     const m = problem.matrix.get(prevNode, placeId);
     const arriveAbs = t + m.minutes;
     travelMin += m.minutes;
-    const fit = feasibleVisit(place, day, arriveAbs);
+    const fit = feasibleVisit(place, day, arriveAbs, ignoreWindows);
     if (!fit) {
       return { feasible: false, stops: [], legs: [], travelMin, waitMin, endMin: Number.POSITIVE_INFINITY };
     }

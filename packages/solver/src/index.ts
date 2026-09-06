@@ -34,5 +34,5 @@ export {
   type Evaluation,
 } from "./alns";
 export { solve, resolve, finalize, repairPass, type SolveOptions, type ResolveOptions, type Edit } from "./solve";
-export { explainUnscheduled } from "./explain";
+export { explainUnscheduled, classifyUnscheduled } from "./explain";
 export { validateTripInput, SolverInputError } from "./validate";

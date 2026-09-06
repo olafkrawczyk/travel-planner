@@ -44,11 +44,14 @@ describe("unscheduledCopy", () => {
     expect(copy.actions).toContain("opening hours");
   });
 
-  it("window_conflict: the generic 'no window fits' fallback is flagged tentative (matrix.ts:427 limitation)", () => {
+  it("window_conflict: the generic 'no window fits' fallback is flagged tentative about specifics, not the category", () => {
     const copy = unscheduledCopy("window_conflict", "No opening window fits any day.");
     expect(copy.tentative).toBe(true);
-    // Must not claim a firm diagnosis it can't back up.
-    expect(copy.why.toLowerCase()).toContain("may not be the real reason");
+    // The category is certain (a real per-day probe already confirmed it) —
+    // only which specific day/window is unnamed. Must not cast doubt on the
+    // category itself.
+    expect(copy.why.toLowerCase()).not.toContain("may not be the real reason");
+    expect(copy.why.toLowerCase()).toContain("couldn't pin down");
   });
 
   it("handles a place that no longer exists without inventing a reason", () => {
@@ -67,16 +70,15 @@ describe("unscheduledCopy", () => {
 
 describe("reasonBadge", () => {
   it("labels no_time and unreachable as firm, danger-toned reasons", () => {
-    expect(reasonBadge("no_time", false)).toEqual({ label: "no time", tone: "danger" });
-    expect(reasonBadge("unreachable", false)).toEqual({ label: "no route", tone: "danger" });
+    expect(reasonBadge("no_time")).toEqual({ label: "no time", tone: "danger" });
+    expect(reasonBadge("unreachable")).toEqual({ label: "no route", tone: "danger" });
   });
 
-  it("labels a firm window_conflict as a danger-toned 'conflict'", () => {
-    expect(reasonBadge("window_conflict", false)).toEqual({ label: "conflict", tone: "danger" });
-  });
-
-  it("softens a tentative window_conflict to a warning-toned 'possible conflict'", () => {
-    expect(reasonBadge("window_conflict", true)).toEqual({ label: "possible conflict", tone: "warning" });
+  // Every reason code is now backed by a real per-day feasibility probe
+  // (see UnscheduledCopy.tentative's doc), so window_conflict is always a
+  // firm, danger-toned "conflict" — no more "possible conflict" softening.
+  it("labels window_conflict as a danger-toned 'conflict'", () => {
+    expect(reasonBadge("window_conflict")).toEqual({ label: "conflict", tone: "danger" });
   });
 });
 

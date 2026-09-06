@@ -434,7 +434,30 @@ export function buildProblem(
   };
 }
 
-/** Default unscheduled reason for a place that could not be inserted. */
+/**
+ * Cheap, static, shape-only guess at why a place couldn't be inserted: does
+ * NOT probe any actual day/window feasibility, so it cannot distinguish "no
+ * day had time" from "the window genuinely blocks every otherwise-viable
+ * day" — a place with any opening-hours/appointment data at all is always
+ * reported `window_conflict` here, even when the real cause was that no day
+ * had room.
+ *
+ * This is intentionally kept cheap for the two call sites that only need a
+ * throwaway, single-place-in-isolation label and never surface it to a
+ * user: `sequenceDay`'s per-day `dropped` tracking (discarded by every
+ * caller once the place is re-pooled — see `solve.ts`) and `poolReason`'s
+ * standalone convenience wrapper. It also predates the opening-hours
+ * weekly-pattern rework and only reads the legacy `place.openingHours` map
+ * directly, so it now misses places constrained solely by
+ * `openingHoursWeekly` — acceptable here because nothing downstream trusts
+ * this value.
+ *
+ * The reason that actually reaches the user (`Itinerary.unscheduled`, built
+ * by `finalize` in solve.ts) is decided by `explain.ts`'s
+ * `classifyUnscheduled` instead, which runs a real per-day probe via
+ * `windowsForDate` and is cheap enough to afford because it only ever runs
+ * once per place left in the final pool.
+ */
 export function reasonFor(p: Place): UnscheduledReason {
   if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return "unreachable";
   if (p.appointment) return "window_conflict";

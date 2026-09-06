@@ -1,4 +1,4 @@
-import { formatHHMM, parseHHMM, windowsForDate, type Place, type UnscheduledReason } from "@app/domain";
+import { formatHHMM, parseHHMM, windowsForDate, type Day, type Place, type UnscheduledReason } from "@app/domain";
 import { entryNode, exitNode, type State } from "./alns";
 import type { Problem } from "./matrix";
 import { computeTimes } from "./sequence";
@@ -19,6 +19,62 @@ function allowedDays(problem: Problem, place: Place): number[] {
     if (!day.locked) days.push(d);
   });
   return days;
+}
+
+/**
+ * Capacity probe for `classifyUnscheduled`: could `place` have been
+ * inserted somewhere in `day`'s current order if its opening-hours /
+ * appointment-time constraint were set aside? Tries every insertion
+ * position, mirroring `insertPlace`/`sequenceDay`'s own insertion loop, so a
+ * place that would only fit at the very end of the day isn't missed. The
+ * place's own id is stripped from `order` first — defensive against the
+ * (rare) case where `order` is the very infeasible order this place already
+ * sits in, which would otherwise double it up in the trial.
+ *
+ * Bounded by `order.length + 1` `computeTimes` calls; only ever invoked per
+ * allowed day for one pooled place at a time (see `classifyUnscheduled`),
+ * never inside the ALNS hot loop.
+ */
+function fitsIgnoringWindow(problem: Problem, day: Day, order: string[], place: Place): boolean {
+  const base = order.filter((id) => id !== place.id);
+  for (let pos = 0; pos <= base.length; pos++) {
+    const trial = [...base.slice(0, pos), place.id, ...base.slice(pos)];
+    if (computeTimes(problem, day, trial, false, true).feasible) return true;
+  }
+  return false;
+}
+
+/**
+ * Real feasibility-based classification of why a pooled place is
+ * unscheduled — this is the actual determination, not a guess from the
+ * place's static shape. The previous approach (report `window_conflict` for
+ * any place with a non-empty opening-hours entry, `no_time` otherwise) was
+ * wrong whenever a place had hours *and* was dropped purely because no day
+ * had room: it named the wrong cause 100% of the time in that case.
+ *
+ * Only ever called for the small set of places left in the pool once
+ * solving is done (see `finalize` in solve.ts) — never inside the ALNS hot
+ * loop or any per-candidate insertion path — so the cost here (bounded by
+ * `fitsIgnoringWindow`'s cost per allowed day) is a non-issue: comparable to
+ * this one place's share of the repair pass that already ran before this is
+ * ever called.
+ *
+ * For each allowed day, probes whether the place would have fit somewhere
+ * in that day's *current* order once its opening-hours/appointment-time
+ * constraint is set aside. If some allowed day had the room, hours (or the
+ * appointment's fixed time) are the actual blocker: `window_conflict`. If no
+ * allowed day had room even with hours ignored, hours were never the issue —
+ * there simply was no time anywhere: `no_time`.
+ */
+export function classifyUnscheduled(problem: Problem, state: State, placeId: string): UnscheduledReason {
+  const p = problem.placesById.get(placeId);
+  if (!p) return "no_time";
+  if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return "unreachable";
+  for (const d of allowedDays(problem, p)) {
+    const day = problem.dayList[d]!;
+    if (fitsIgnoringWindow(problem, day, state.days[d] ?? [], p)) return "window_conflict";
+  }
+  return "no_time";
 }
 
 /**

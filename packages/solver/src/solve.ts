@@ -8,10 +8,10 @@ import {
   parseHHMM,
 } from "@app/domain";
 import { alns, evaluate, insertPlace, type State } from "./alns";
-import { explainUnscheduled } from "./explain";
+import { classifyUnscheduled, explainUnscheduled } from "./explain";
 import { clusterFirstSequence } from "./cluster";
 import { giantTour } from "./giantTour";
-import { buildProblem, type Problem, reasonFor } from "./matrix";
+import { buildProblem, type Problem } from "./matrix";
 import { split } from "./split";
 import { computeTimes, sequenceDay, type DayWindow } from "./sequence";
 import { validateTripInput } from "./validate";
@@ -377,8 +377,7 @@ export function finalize(problem: Problem, state: State, previous: Itinerary | u
     if (order.length > 0 && times.stops.length === 0) {
       // Infeasible order (e.g. stale wrong-day appointment): report as unscheduled.
       for (const id of order) {
-        const p = problem.placesById.get(id);
-        const reason = p ? reasonFor(p) : "no_time";
+        const reason = classifyUnscheduled(problem, state, id);
         unscheduled.push({ placeId: id, reason, explanation: explainUnscheduled(problem, state, id, reason) });
       }
     }
@@ -393,9 +392,8 @@ export function finalize(problem: Problem, state: State, previous: Itinerary | u
   });
 
   for (const id of state.pool) {
-    const p = problem.placesById.get(id);
-    if (!p) continue;
-    const reason = reasonFor(p);
+    if (!problem.placesById.has(id)) continue;
+    const reason = classifyUnscheduled(problem, state, id);
     unscheduled.push({ placeId: id, reason, explanation: explainUnscheduled(problem, state, id, reason) });
   }
 

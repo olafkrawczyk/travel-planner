@@ -25,6 +25,7 @@ import {
   type AnySampleData,
 } from "./tripFactory";
 import { staysFor, validateStays, withHotel, type Stay } from "./stays";
+import { PHOTON_CONTACT } from "./photonContact";
 
 export { dateRange, MAX_TRIP_DAYS };
 export { staysFor, validateStays } from "./stays";
@@ -221,19 +222,6 @@ let resolveCounter = 0;
 
 /** Persistent cache for OSRM travel matrices (main thread only — never the worker). */
 const matrixCache: MatrixCache = new DexieMatrixCache();
-
-/**
- * Contact identifier sent as Photon's `From` header (release audit item 4).
- * `User-Agent` is a forbidden header name the fetch spec drops silently
- * (PhotonClient's attempt at it never actually reaches the server), so
- * `From`/`contactEmail` is the only lever that does. Same value as
- * SearchBox.tsx's `PHOTON_CONTACT` — that file is owned by a concurrent
- * agent and off-limits here, and its constant isn't exported, so this is a
- * second definition rather than a shared import; keep the two in sync if
- * this value ever changes. Not a personal email address, and not anything
- * from local git config — see SearchBox.tsx's fuller comment on why.
- */
-const PHOTON_CONTACT = "travel-planner-app (no project contact configured yet)";
 
 /** Non-debounced geocoder for one-shot lookups (trip creation). */
 const creationGeo = new PhotonClient({
