@@ -6,11 +6,11 @@ import { day, place, trip, DEG_PER_KM } from "./testUtils";
 describe("clusterFirst strategy", () => {
   it("groups places by their region", () => {
     // Two tight clusters separated by ~50km
-    const p1 = place({ id: "p1", region: "A" });
-    const p2 = place({ id: "p2", region: "A" });
+    const p1 = place({ id: "p1", region: "A", lat: 35.66, lng: 139.68 });
+    const p2 = place({ id: "p2", region: "A", lat: 35.66 + 0.5 * DEG_PER_KM, lng: 139.68 });
 
-    const p3 = place({ id: "p3", region: "B" });
-    const p4 = place({ id: "p4", region: "B" });
+    const p3 = place({ id: "p3", region: "B", lat: 35.66 + 50 * DEG_PER_KM, lng: 139.68 });
+    const p4 = place({ id: "p4", region: "B", lat: 35.66 + 50.5 * DEG_PER_KM, lng: 139.68 });
 
     const clusters = clusterPlaces([p1, p2, p3, p4]);
     expect(clusters).toHaveLength(2);

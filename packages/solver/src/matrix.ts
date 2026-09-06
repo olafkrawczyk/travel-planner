@@ -155,6 +155,9 @@ const MAX_PLAUSIBLE_SPEED_KMH: Record<Mode, number> = {
   // Generous enough to admit fast intercity rail without false positives;
   // still catches a "transit" entry that implies flight-speed travel.
   transit: 250,
+  // Generous enough for motorway driving without false positives; still
+  // catches a "car" entry that implies flight-speed travel.
+  car: 130,
 };
 
 /** API-sourced entry: real OSRM minutes for `profile`; distance is still haversine (display only). */

@@ -5,6 +5,14 @@ import { type Problem } from "./matrix";
 export interface SplitResult {
   /** One segment (ordered place ids, possibly empty) per day, in day order. */
   segments: string[][];
+  /**
+   * Total DP cost of this split: the sum, across all days, of each day's
+   * segment cost (travel + dwell + return-to-base, plus the heavy but finite
+   * penalties for time-budget overruns and appointment violations). Lower is
+   * better; callers compare `cost` across tour rotations/reversals to pick
+   * the best split (see `solve.ts`).
+   */
+  cost: number;
 }
 
 const APPT_PENALTY = 1e9;

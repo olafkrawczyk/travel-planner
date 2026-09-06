@@ -137,6 +137,8 @@ export function emptyTrip(
 /** Default solver weights/heuristics shared by all newly created trips. */
 function defaultSettings(): Trip["settings"] {
   return {
+    carOnly: false,
+    solverStrategy: "routeFirst",
     walkSpeedKmh: 4.5,
     walkMaxKm: 1.5,
     transitSpeedKmh: 18,

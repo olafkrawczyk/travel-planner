@@ -38,6 +38,8 @@ function makeTrip(days: number, hotelIds: string[]): Trip {
     places: hotelIds.map(place),
     travelOverrides: [],
     settings: {
+      carOnly: false,
+      solverStrategy: "clusterFirst",
       walkSpeedKmh: 4.5,
       walkMaxKm: 1.5,
       transitSpeedKmh: 18,

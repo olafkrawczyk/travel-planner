@@ -14,6 +14,13 @@ export interface SolveRequest {
    * network-free and deterministic) and passed in as pure data.
    */
   apiMatrix?: number[][];
+  /**
+   * The OSRM routing profile that actually produced `apiMatrix` (e.g.
+   * "foot" or "driving"). Forwarded verbatim to `solve`/`resolve` as
+   * `apiProfile`; optional because a caller with no `apiMatrix` has no
+   * profile to report either.
+   */
+  apiProfile?: string;
 }
 
 export interface SolveApi {
