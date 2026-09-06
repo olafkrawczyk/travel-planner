@@ -200,10 +200,16 @@ export interface StoreState {
    *  the trip dirty. On a check-in day the wake-up base is the previous hotel
    *  and the sleep base the new one (travel day). Undo/redo via snapshots. */
   setStays(stays: Stay[]): void;
-  /** Create a hotel place at the trip's current base location, assign it to
-   *  stay `idx`, and write the stays back — one undoable mutation. Returns the
-   *  new place id, or null when there is no current trip. */
-  addHotelForStay(idx: number, name?: string): string | null;
+  /** Create a hotel place and assign it to stay `idx`, and write the stays
+   *  back — one undoable mutation. Returns the new place id, or null when
+   *  there is no current trip. When `location` is omitted, the hotel is
+   *  created at the trip's current base location and stamped with the
+   *  placeholder-location sentinel notes (`AUTO_HOTEL_NOTES` in
+   *  StaysPanel.tsx / `hotelNeedsLocation`). When `location` is given (e.g.
+   *  accepting a hotel-area recommendation — see `add-hotel-area-recommendation`),
+   *  the hotel is created at that deliberate location instead and is NOT
+   *  flagged as needing a location. */
+  addHotelForStay(idx: number, name?: string, location?: { lat: number; lng: number }): string | null;
   updateFlags(partial: Partial<Flags>): void;
   toggleDevPanel(open?: boolean): void;
   setToast(message: string | null): void;
@@ -837,21 +843,29 @@ export const useStore = create<StoreState>((set, get) => {
       });
     },
 
-    addHotelForStay(idx, name) {
+    addHotelForStay(idx, name, location) {
       const { currentTrip } = get();
       if (!currentTrip) return null;
       const id = newPlaceId();
       get().mutateTrip((draft) => {
+        // No explicit location: copy the current base, as before, and stamp
+        // the placeholder-location sentinel (`AUTO_HOTEL_NOTES` in
+        // StaysPanel.tsx) so `hotelNeedsLocation` flags it. An explicit
+        // location (e.g. from a hotel-area recommendation) is deliberate, so
+        // it's used as-is and left unflagged — see design.md decision 11 of
+        // `add-hotel-area-recommendation`.
         const base = draft.places.find((p) => p.id === draft.days[0]?.baseStartId) ?? draft.places[0];
         const hotel: Place = {
           id,
           name: name?.trim() || "New hotel (edit me)",
-          lat: base?.lat ?? 0,
-          lng: base?.lng ?? 0,
+          lat: location?.lat ?? base?.lat ?? 0,
+          lng: location?.lng ?? base?.lng ?? 0,
           category: "hotel",
           dwellMin: 0,
           priority: 3,
-          notes: "Created from the stays panel — edit to set name and location.",
+          notes: location
+            ? "Located from a hotel-area recommendation."
+            : "Created from the stays panel — edit to set name and location.",
         };
         draft.places.push(hotel);
         applyStaysToDays(draft, withHotel(staysFor(draft), idx, id));

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Place } from "@app/domain";
+import { recommendHotelAreas, type HotelAreaCandidate, type HotelAreaSegment } from "@app/solver";
 import { dayColor, staysFor, useStore, type Stay } from "../store";
 import { nightsRange, withCheckIn, withHotel, withNights, withoutStay, withSplitAt } from "../stays";
 
@@ -23,6 +24,45 @@ const AUTO_HOTEL_NOTES = "Created from the stays panel — edit to set name and 
  *  MapView.tsx), until the user actually repositions it. */
 export function hotelNeedsLocation(place: Place | undefined): boolean {
   return !!place && place.category === "hotel" && place.notes === AUTO_HOTEL_NOTES;
+}
+
+/** `"~0.8 km radius"` — one decimal, consistent with the candidate's already
+ *  one-decimal-rounded `radiusKm`. */
+export function formatRadiusKm(radiusKm: number): string {
+  return `~${radiusKm.toFixed(1)} km radius`;
+}
+
+/** `"~14 min avg one-way"` — rounded to the nearest minute; the candidate's
+ *  own `rationale` string carries the fuller sentence, this is the compact
+ *  at-a-glance figure shown alongside it. */
+export function formatAvgOneWayMin(avgOneWayMin: number): string {
+  return `~${Math.round(avgOneWayMin)} min avg one-way`;
+}
+
+/**
+ * A plain Google Maps search centered on a candidate's coordinates — same
+ * URL-building approach as Timeline.tsx's `gmapsLink` (a `google.com/maps`
+ * URL via the Maps URLs API), but for an open-ended "search hotels here"
+ * rather than a specific origin/destination route. Embedding the
+ * coordinates directly in the query text is the simplest way to bias a
+ * text search toward a location without a routing/place-details call.
+ */
+export function gmapsHotelSearchLink(lat: number, lng: number): string {
+  const url = new URL("https://www.google.com/maps/search/");
+  url.searchParams.set("api", "1");
+  url.searchParams.set("query", `hotels near ${lat},${lng}`);
+  return url.toString();
+}
+
+/**
+ * Whether a stay row's hotel-area recommendation should start expanded.
+ * Per design.md decision 10, the recommendation is most useful before a
+ * real hotel location exists for the stay — once a hotel is there and
+ * deliberately located, the suggestion is kept out of the way (collapsed,
+ * still reachable) rather than cluttering a panel that no longer needs it.
+ */
+export function defaultRecommendationOpen(hotel: Place | undefined): boolean {
+  return hotelNeedsLocation(hotel) || !hotel;
 }
 
 /**
@@ -49,6 +89,11 @@ export function StaysPanel() {
   const stays = staysFor(trip);
   const days = trip.days.length;
   const dateOf = (idx: number) => trip.days[idx]?.date;
+  // Index-aligned with `stays` (both derive segments from the same
+  // stayStart/baseEndId day fields — see design.md decision 3/10 of
+  // add-hotel-area-recommendation). Computed inline, same convention as
+  // `staysFor(trip)` above: no memoization, cheap at trip scale.
+  const hotelAreas = recommendHotelAreas(trip);
 
   /** Create a new hotel place and assign it to stay `idx` in one undoable
    *  mutation. The user repositions it via the place editor. */
@@ -174,6 +219,9 @@ export function StaysPanel() {
                       ✕
                     </button>
                   )}
+                  <div className="hotel-area-wrap">
+                    <HotelAreaRecommendation idx={i} segment={hotelAreas[i]} hotel={hotel} />
+                  </div>
                 </li>
               );
             })}
@@ -219,6 +267,83 @@ export function StaysPanel() {
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * One stay row's hotel-area recommendation: up to 3 ranked "search here"
+ * candidates (center/radius/rationale/avg one-way minutes), each with a
+ * one-click "Use this area" (→ `addHotelForStay(idx, undefined, {lat, lng})`,
+ * the same undoable-mutation path `addNewHotel` uses, just with a deliberate
+ * location) and an outbound Google Maps search link. Collapsed by default
+ * once the stay already has a real (non-placeholder) hotel location, so it
+ * doesn't clutter the panel for a stay that no longer needs it — still
+ * reachable via the `<summary>` toggle. Renders nothing when there is no
+ * segment to show (shouldn't happen given `recommendHotelAreas` is always
+ * index-aligned with `staysFor`, but keeps this defensive).
+ */
+function HotelAreaRecommendation({
+  idx,
+  segment,
+  hotel,
+}: {
+  idx: number;
+  segment: HotelAreaSegment | undefined;
+  hotel: Place | undefined;
+}) {
+  const addHotelForStay = useStore((s) => s.addHotelForStay);
+  const setToast = useStore((s) => s.setToast);
+  if (!segment) return null;
+
+  function useThisArea(candidate: HotelAreaCandidate) {
+    const id = addHotelForStay(idx, undefined, { lat: candidate.lat, lng: candidate.lng });
+    if (!id) return;
+    const name = useStore.getState().currentTrip?.places.find((p) => p.id === id)?.name ?? "Hotel";
+    // Unlike addNewHotel's placeholder-location toast, this location was
+    // deliberately chosen — the copy (and the absence of a "needs location"
+    // badge on the row) should reflect that.
+    setToast(`Hotel "${name}" added ${candidate.label.toLowerCase()} — search hotels there to pick a real one.`);
+  }
+
+  if (segment.candidates.length === 0) {
+    return <p className="hint hotel-area-hint">{segment.note}</p>;
+  }
+
+  return (
+    <details className="hotel-area" open={defaultRecommendationOpen(hotel)}>
+      <summary>Hotel area suggestions</summary>
+      <ul className="hotel-area-candidates">
+        {segment.candidates.map((c, ci) => (
+          <li key={ci} className="hotel-area-candidate">
+            <div className="hotel-area-candidate-main">
+              <strong>{c.label}</strong>
+              <span className="hint">
+                {formatRadiusKm(c.radiusKm)} · {formatAvgOneWayMin(c.avgOneWayMin)}
+              </span>
+              <p className="hotel-area-rationale">{c.rationale}</p>
+            </div>
+            <div className="hotel-area-candidate-actions">
+              <button
+                type="button"
+                aria-label={`Use ${c.label} as the hotel area for stay ${idx + 1}`}
+                onClick={() => useThisArea(c)}
+              >
+                Use this area
+              </button>
+              <a
+                className="gmaps-link"
+                href={gmapsHotelSearchLink(c.lat, c.lng)}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Search hotels near here on Google Maps (opens in a new tab)"
+              >
+                Search hotels here ↗
+              </a>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

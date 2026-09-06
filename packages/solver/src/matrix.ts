@@ -331,6 +331,37 @@ export function apiMatrixCoords(trip: Trip): { id: string; lat: number; lng: num
   return coords;
 }
 
+/**
+ * Derive stay-segment groupings from a trip's days: consecutive day indices
+ * are grouped together until a new stay begins, signalled either by an
+ * explicit `day.stayStart` flag or by `day.baseEndId` changing from the
+ * previous day's. Extracted from `buildProblem`'s original inline loop (see
+ * design.md decision 3 in the `add-hotel-area-recommendation` change) so
+ * `packages/solver/src/hotelArea.ts` can derive the exact same segment
+ * boundaries `apps/web/src/stays.ts`'s `staysFor` already reads from the same
+ * two fields, without duplicating this logic. Behavior-preserving: produces
+ * identical output to the loop it replaced.
+ */
+export function staySegments(days: Day[]): number[][] {
+  const stayGroups: number[][] = [];
+  let currentGroup: number[] = [];
+  let lastBaseEndId: string | null = null;
+  for (let i = 0; i < days.length; i++) {
+    const day = days[i]!;
+    const isNewStay = day.stayStart || (lastBaseEndId !== null && day.baseEndId !== lastBaseEndId);
+    if (isNewStay && currentGroup.length > 0) {
+      stayGroups.push(currentGroup);
+      currentGroup = [];
+    }
+    currentGroup.push(i);
+    lastBaseEndId = day.baseEndId;
+  }
+  if (currentGroup.length > 0) {
+    stayGroups.push(currentGroup);
+  }
+  return stayGroups;
+}
+
 export function buildProblem(
   trip: Trip,
   apiDurations?: number[][],
@@ -388,22 +419,7 @@ export function buildProblem(
   // scheduled into the itinerary as a stop.
   const schedulable = trip.places.filter((p) => !baseIdSet.has(p.id) && p.category !== "hotel");
 
-  const stayGroups: number[][] = [];
-  let currentGroup: number[] = [];
-  let lastBaseEndId: string | null = null;
-  for (let i = 0; i < trip.days.length; i++) {
-    const day = trip.days[i]!;
-    const isNewStay = day.stayStart || (lastBaseEndId !== null && day.baseEndId !== lastBaseEndId);
-    if (isNewStay && currentGroup.length > 0) {
-      stayGroups.push(currentGroup);
-      currentGroup = [];
-    }
-    currentGroup.push(i);
-    lastBaseEndId = day.baseEndId;
-  }
-  if (currentGroup.length > 0) {
-    stayGroups.push(currentGroup);
-  }
+  const stayGroups: number[][] = staySegments(trip.days);
 
   return {
     trip,

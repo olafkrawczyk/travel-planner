@@ -56,6 +56,7 @@ import { tokyoHakoneSample } from "./samples/tokyo-hakone";
 import { staysFor, useStore, validateStays, type Stay } from "./store";
 import { withSplitAt } from "./stays";
 import { solverClient } from "./worker/solverClient";
+import { hotelNeedsLocation } from "./components/StaysPanel";
 
 const emptyItinerary: Itinerary = {
   days: [],
@@ -258,6 +259,24 @@ describe("addHotelForStay", () => {
     useStore.setState({ currentTrip: null, past: [], future: [] });
     expect(useStore.getState().addHotelForStay(0)).toBeNull();
     expect(useStore.getState().past).toEqual([]);
+  });
+
+  it("creates the hotel at an explicit location and does not flag it as needing a location, while a no-location call still does", () => {
+    const trip = tokyoHakoneTrip();
+    useStore.setState({ currentTrip: trip, past: [], future: [] });
+
+    const locatedId = useStore.getState().addHotelForStay(1, "Hakone Ryokan", { lat: 35.23, lng: 139.03 });
+    const located = useStore.getState().currentTrip!.places.find((p) => p.id === locatedId);
+    expect(located?.lat).toBe(35.23);
+    expect(located?.lng).toBe(139.03);
+    expect(hotelNeedsLocation(located)).toBe(false);
+    expect(staysFor(useStore.getState().currentTrip!)[1]?.hotelId).toBe(locatedId);
+
+    // A no-location call (existing behaviour) still copies the base and is
+    // still flagged as needing a location — unaffected by the new parameter.
+    const placeholderId = useStore.getState().addHotelForStay(0);
+    const placeholder = useStore.getState().currentTrip!.places.find((p) => p.id === placeholderId);
+    expect(hotelNeedsLocation(placeholder)).toBe(true);
   });
 });
 
