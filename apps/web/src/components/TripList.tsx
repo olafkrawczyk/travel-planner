@@ -135,6 +135,15 @@ export function TripList() {
   const [end, setEnd] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // P2 #6: `importError` only ever cleared on a later *successful* import
+  // (see store.ts), so a failed import used to leave a permanent red banner
+  // with no way to dismiss it. `importTripJson` isn't in this component's
+  // editable surface, so the fix lives here: track dismissal locally, and
+  // un-dismiss automatically whenever the store reports a *new* error (a
+  // second, different failure must not be hidden by an earlier dismissal).
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
+  const showImportError = importError !== null && importError !== dismissedError;
+
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
     const weekLater = new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10);
@@ -167,9 +176,18 @@ export function TripList() {
       {trips.length === 0 && (
         <section className="first-run">
           <p className="first-run-pitch">
-            Travel Planner turns a list of places into a day-by-day itinerary — plotted on a map,
-            timed leg by leg, and automatically rebalanced whenever you add, drag, or drop a place.
+            Travel Planner turns a list of places into a day-by-day itinerary, plotted on a map and
+            timed leg by leg. The loop: add places, hit Regenerate to let the solver arrange them
+            across your days, then drag, pin, or edit anything that's off — regenerating again
+            whenever you want those tweaks applied.
           </p>
+          <ol className="first-run-steps">
+            <li>Add places — search the map once a trip is open, or start from a sample below.</li>
+            <li>
+              Hit <strong>Regenerate</strong> (⟳ button, or Ctrl+Enter) to build the itinerary.
+            </li>
+            <li>Tweak: drag between days, pin favourites, or edit details — then regenerate again to apply.</li>
+          </ol>
           <div className="sample-grid">
             {SAMPLES.map((s) => (
               <button
@@ -183,7 +201,9 @@ export function TripList() {
               </button>
             ))}
           </div>
-          <p className="hint first-run-or">Or set up your own trip below.</p>
+          <p className="hint first-run-or">
+            Pick a sample above for a finished itinerary right away, or set up your own trip below.
+          </p>
         </section>
       )}
 
@@ -234,7 +254,19 @@ export function TripList() {
         </p>
       </form>
 
-      {importError && <div className="error-banner" role="alert">{importError}</div>}
+      {showImportError && (
+        <div className="error-banner" role="alert">
+          <span className="error-banner-message">{importError}</span>
+          <button
+            type="button"
+            className="error-banner-dismiss"
+            onClick={() => setDismissedError(importError)}
+            aria-label="Dismiss this error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {trips.length > 0 && (
         <>

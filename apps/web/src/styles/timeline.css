@@ -64,6 +64,12 @@
   background: var(--bg-surface-hover);
 }
 .day-empty { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
+/* Quiet variant for a day with no stops when the WHOLE trip has no places
+ * yet (P1 #4) — deliberately not `.day-empty` (see components.css's warning
+ * box override): a trip that hasn't had its first place added isn't a
+ * planning gap, so this stays plain, unboxed text instead of repeating a
+ * dashed warning box once per day. */
+.day-empty-quiet { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
 /* Text-styled, not a bordered button — the empty state is a quiet suggestion
  * (see the day-empty JSX comment in Timeline.tsx), so the regenerate control
  * has to read as "part of the sentence" rather than a competing CTA. Same
@@ -275,6 +281,13 @@
 .unscheduled-tray ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .unscheduled-tray li { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .unscheduled-tray .explanation { flex-basis: 100%; margin: 0; font-size: var(--text-sm); color: var(--text-muted); }
-.unscheduled-tray .unscheduled-actions { display: flex; align-items: center; gap: var(--space-1); }
+.unscheduled-tray .unscheduled-actions { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
+/* Force-insert cost preview (P0 #2): shown the moment a target day is picked,
+ * before the user commits to Force — plain text (not a badge) so it reads as
+ * a sentence next to the day picker rather than another status chip. Turns
+ * accent (informational: "this fits") when the preview is clean, and warning
+ * (matches badge-warning's tone) the moment it implies an overrun. */
+.force-preview { flex-basis: 100%; }
+.force-preview-over { color: var(--warning-text); font-weight: 600; }
 
 .day-bases-info { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--text-muted); }

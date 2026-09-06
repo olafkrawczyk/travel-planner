@@ -50,7 +50,7 @@
   background: var(--bg-surface);
 }
 .stays-list { list-style: none; margin: 0 0 var(--space-1); padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.stay-row { display: flex; align-items: center; gap: var(--space-2); }
+.stay-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .stay-row select { min-width: 0; flex: 1; }
 .stay-field { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-sm); color: var(--text-muted); }
 .stay-field input[type="number"] { width: 3.5rem; }

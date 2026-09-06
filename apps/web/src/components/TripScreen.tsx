@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -53,6 +54,35 @@ function formatScore(score: number): { text: string; title?: string } {
   return { text: `score ${Math.round(score)}` };
 }
 
+/**
+ * Stale-itinerary discoverability (P1 #3): edits made through the place
+ * editor previously left no trace once the editor closed — the dirty pill
+ * lives in the header and the stale banner lives in the (possibly
+ * scrolled-out-of-view, or behind the editor's own modal) timeline, so the
+ * one moment guaranteed to have the user's attention — closing the editor
+ * and landing back on the itinerary — said nothing. This fires a single
+ * toast exactly then, and only when something actually changed during that
+ * editing session (comparing `pendingChanges` at open vs. at close) — never
+ * on a no-op open/close, and never more than once per session, so it can't
+ * turn into the nag the task explicitly warns against for something that
+ * "happens constantly".
+ */
+export function shouldNotifyStaleOnEditorClose(
+  wasEditing: boolean,
+  isEditing: boolean,
+  pendingAtOpen: number,
+  pendingNow: number,
+): boolean {
+  return wasEditing && !isEditing && pendingNow > pendingAtOpen;
+}
+
+/** Toast copy for the notice above — names the concrete next step
+ *  (Regenerate) rather than just flagging that something is stale. */
+export function staleEditToastMessage(changeCount: number): string {
+  const n = Math.max(1, changeCount);
+  return `Saved — the itinerary doesn't reflect ${n} change${n === 1 ? "" : "s"} yet. Regenerate (Ctrl+Enter) to apply.`;
+}
+
 /** Trip screen: split view (map | timeline) on desktop, persistent map + bottom sheet on mobile. */
 export function TripScreen() {
   const trip = useStore((s) => s.currentTrip);
@@ -72,6 +102,7 @@ export function TripScreen() {
   const closeTrip = useStore((s) => s.closeTrip);
   const exportTripJson = useStore((s) => s.exportTripJson);
   const setToast = useStore((s) => s.setToast);
+  const editingPlaceId = useStore((s) => s.editingPlaceId);
 
   // Mobile bottom-sheet height (P1 #8): the handle used to be pure decoration
   // (no wiring at all) despite visually promising a resize. `sheetVh` drives
@@ -79,6 +110,19 @@ export function TripScreen() {
   // mobile.css) — inert on desktop, where the split view doesn't use it.
   const [sheetVh, setSheetVh] = useState(SHEET_DEFAULT_VH);
   const sheetDragRef = useRef<{ startY: number; startVh: number } | null>(null);
+
+  // Stale-on-editor-close notice (P1 #3) — see `shouldNotifyStaleOnEditorClose`.
+  const wasEditingRef = useRef(false);
+  const pendingAtOpenRef = useRef(0);
+  useEffect(() => {
+    const isEditing = editingPlaceId !== null;
+    if (isEditing && !wasEditingRef.current) {
+      pendingAtOpenRef.current = pendingChanges;
+    } else if (shouldNotifyStaleOnEditorClose(wasEditingRef.current, isEditing, pendingAtOpenRef.current, pendingChanges)) {
+      setToast(staleEditToastMessage(pendingChanges - pendingAtOpenRef.current));
+    }
+    wasEditingRef.current = isEditing;
+  }, [editingPlaceId, pendingChanges, setToast]);
 
   if (!trip) return null;
   const stats = itinerary?.stats;

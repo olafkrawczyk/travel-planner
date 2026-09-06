@@ -1,12 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import type { DayPlan, Itinerary, Place, TravelOverride } from "@app/domain";
 import { useStore, dayColor } from "../store";
-
-const REASON_LABEL: Record<string, string> = {
-  no_time: "no time left in any day",
-  window_conflict: "appointment window conflict",
-  unreachable: "unreachable in time",
-};
+import { UnscheduledTray } from "./UnscheduledTray";
 
 function timeToMins(t: string) {
   if (!t) return 0;
@@ -103,10 +98,24 @@ export function Timeline() {
   if (!trip || !itinerary) return null;
 
   const plans = new Map(itinerary.days.map((d) => [d.dayId, d]));
+  // A trip with no schedulable places (hotels don't count — see the
+  // solver's own `schedulable` filter in matrix.ts) has nothing for the
+  // per-day "nothing scheduled" hints or the "everything fits" tray message
+  // to meaningfully report; both would otherwise read as a dead end (P1 #4)
+  // or an outright lie ("everything fits" when there was nothing to fit).
+  // This one banner replaces both with the actual next step.
+  const hasPlaces = trip.places.some((p) => p.category !== "hotel");
 
   return (
     <div className={"timeline" + (solving ? " solving" : "")}>
       {solving && <div className="solve-banner">Optimising… improvements appear live.</div>}
+      {!hasPlaces && (
+        <div className="empty-trip-hint hint">
+          <strong>No places yet.</strong> Search the map above and add a few — museums, food, a
+          viewpoint, whatever you want to see. Once you've added some, hit Regenerate (⟳ or
+          Ctrl+Enter) to build the itinerary.
+        </div>
+      )}
       {dirty && !solving && (
         <div className="stale-banner">
           Itinerary out of date —{" "}
@@ -288,25 +297,34 @@ function DaySection(props: {
         // this the same look) — so this stays a quiet suggestion, not a
         // warning shout, and gives the two ways out of the gap: drag a
         // place in (the section is already a drop target) or regenerate.
-        <p className="hint day-empty">
-          {props.locked ? (
-            "Nothing scheduled — this day is locked, so regenerating won't fill it. Drag a place here, or unlock the day first."
-          ) : (
-            <>
-              Nothing scheduled yet. Drag a place here, or{" "}
-              <button
-                type="button"
-                className="day-empty-action"
-                disabled={solving}
-                title="Recompute the itinerary (Ctrl+Enter)"
-                onClick={regenerate}
-              >
-                regenerate
-              </button>{" "}
-              to let the solver fill it.
-            </>
-          )}
-        </p>
+        // When the whole trip has no places yet, "drag a place here" isn't
+        // actionable (there's nothing to drag) and "regenerate" is a no-op —
+        // the top-of-timeline banner already covers that case, so this stays
+        // a quiet, unstyled note instead of repeating a warning box on every
+        // single day (P1 #4).
+        !places.some((p) => p.category !== "hotel") ? (
+          <p className="hint day-empty-quiet">No places yet — see the note above.</p>
+        ) : (
+          <p className="hint day-empty">
+            {props.locked ? (
+              "Nothing scheduled — this day is locked, so regenerating won't fill it. Drag a place here, or unlock the day first."
+            ) : (
+              <>
+                Nothing scheduled yet. Drag a place here, or{" "}
+                <button
+                  type="button"
+                  className="day-empty-action"
+                  disabled={solving}
+                  title="Recompute the itinerary (Ctrl+Enter)"
+                  onClick={regenerate}
+                >
+                  regenerate
+                </button>{" "}
+                to let the solver fill it.
+              </>
+            )}
+          </p>
+        )
       ) : (
         <div className="timeline-track">
           <div
@@ -556,91 +574,3 @@ function MoveMenu({ placeId, currentDayIndex }: { placeId: string; currentDayInd
   );
 }
 
-/** "Couldn't fit" tray (task 8.3, extended by add-smart-dropping): reason,
- *  explanation, priority badge and fix actions (force into a day / raise to
- *  must) — never silently omit unscheduled places. */
-const PRIORITY_LABEL: Record<1 | 2 | 3, string> = { 1: "must", 2: "want", 3: "nice" };
-
-function UnscheduledTray({ itinerary, trip }: { itinerary: Itinerary; trip: NonNullable<ReturnType<typeof useStore.getState>["currentTrip"]> }) {
-  const openPlaceEditor = useStore((s) => s.openPlaceEditor);
-  if (itinerary.unscheduled.length === 0) {
-    // Silently rendering nothing here used to be indistinguishable from the
-    // tray being broken — someone hunting for a place they just added had no
-    // way to tell "it got scheduled" from "this is stuck". A quiet
-    // confirmation closes that gap without competing with the tray's real
-    // content when there IS something unscheduled (hence no warning/danger
-    // styling — this is the success case, not a lesser version of the alert).
-    return <p className="hint unscheduled-fit">Everything fits — no places left unscheduled.</p>;
-  }
-  return (
-    <div className="unscheduled-tray">
-      <h3>Couldn’t fit</h3>
-      <ul>
-        {itinerary.unscheduled.map(({ placeId, reason, explanation }) => {
-          const p = placeOf(trip.places, placeId);
-          return (
-            <li key={placeId}>
-              <button className="stop-name" onClick={() => openPlaceEditor(placeId)}>
-                {p?.name ?? placeId}
-              </button>
-              {p && (
-                <span className={"badge " + (p.priority === 1 ? "badge-danger" : p.priority === 2 ? "badge-info" : "")} title={`Priority: ${PRIORITY_LABEL[p.priority]}`}>
-                  {PRIORITY_LABEL[p.priority]}
-                </span>
-              )}
-              <span className="badge badge-danger">{REASON_LABEL[reason] ?? reason}</span>
-              {explanation && <p className="explanation hint">{explanation}</p>}
-              <UnscheduledActions placeId={placeId} />
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-/** Quick fixes for one unscheduled place: day-select + Force, Raise to must. */
-function UnscheduledActions({ placeId }: { placeId: string }) {
-  const trip = useStore((s) => s.currentTrip);
-  const forceInsert = useStore((s) => s.forceInsert);
-  const raisePriority = useStore((s) => s.raisePriority);
-  const [dayId, setDayId] = useState("");
-  if (!trip) return null;
-  return (
-    <div className="unscheduled-actions">
-      <select
-        className="move-menu"
-        value={dayId}
-        title="Day to force the place into"
-        onChange={(e) => setDayId(e.target.value)}
-      >
-        <option value="">Force into…</option>
-        {trip.days.map((d, i) => (
-          <option key={d.id} value={d.id}>
-            Day {i + 1}
-          </option>
-        ))}
-      </select>
-      <button
-        className="icon-btn"
-        disabled={!dayId}
-        title="Best-effort insert: hard constraints still apply, the day may go over budget"
-        onClick={() => {
-          if (dayId) {
-            forceInsert(placeId, dayId);
-            setDayId("");
-          }
-        }}
-      >
-        Force
-      </button>
-      <button
-        className="icon-btn"
-        title="Raise priority to must and re-solve"
-        onClick={() => raisePriority(placeId)}
-      >
-        Raise to must
-      </button>
-    </div>
-  );
-}

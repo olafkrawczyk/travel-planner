@@ -4,6 +4,28 @@ import { dayColor, staysFor, useStore, type Stay } from "../store";
 import { nightsRange, withCheckIn, withHotel, withNights, withoutStay, withSplitAt } from "../stays";
 
 /**
+ * The exact `notes` text the store's `addHotelForStay` stamps on a hotel it
+ * creates at a default (copied-from-base) location — see store.ts. There is
+ * no dedicated schema field for "this hotel's location is still a
+ * placeholder" (adding one is a schema change out of scope here), so this
+ * string is the only signal available that a hotel has never had its real
+ * coordinates set. It's cleared the moment the user edits the notes field in
+ * the place editor — which is exactly what they're being nudged to do
+ * together with fixing the location, so in practice it clears itself as
+ * part of the normal fix-up flow.
+ */
+const AUTO_HOTEL_NOTES = "Created from the stays panel — edit to set name and location.";
+
+/** P1 #5: a toast alone (auto-dismissing, easy to miss) was the only signal
+ *  that a freshly-created hotel sits at a placeholder location — this makes
+ *  that state persistent and visible on the hotel itself, in every place its
+ *  identity shows up (this panel's stay rows, and the map marker in
+ *  MapView.tsx), until the user actually repositions it. */
+export function hotelNeedsLocation(place: Place | undefined): boolean {
+  return !!place && place.category === "hotel" && place.notes === AUTO_HOTEL_NOTES;
+}
+
+/**
  * Stays panel: the stays-based view over the trip's bases, shown at the top of
  * the timeline sidebar (collapsible). Rows are hotel / check-in day / nights;
  * a coverage bar shows each stay's span across the trip days with check-in
@@ -34,7 +56,10 @@ export function StaysPanel() {
     const id = addHotelForStay(idx);
     if (!id) return;
     const name = useStore.getState().currentTrip?.places.find((p) => p.id === id)?.name ?? "Hotel";
-    setToast(`Hotel "${name}" added — open it on the map to set its exact location.`);
+    // The toast alone used to be the only signal (auto-dismisses, easy to
+    // miss) — a "needs location" badge on this row (and on its map marker)
+    // now stays up until the hotel is actually repositioned (P1 #5).
+    setToast(`Hotel "${name}" added at a placeholder location — open it on the map to set the real one.`);
   }
 
   return (
@@ -83,6 +108,14 @@ export function StaysPanel() {
                     )}
                     <option value="__new__">＋ New hotel…</option>
                   </select>
+                  {hotelNeedsLocation(hotel) && (
+                    <span
+                      className="badge badge-warning"
+                      title={`"${hotel!.name}" was created at a default location — open it (on the map or via ✎ edit) to set its real address.`}
+                    >
+                      needs location
+                    </span>
+                  )}
                   <label className="stay-field">
                     Check-in
                     {i === 0 ? (
