@@ -3,10 +3,22 @@ import { MemoryGeoCache, PhotonClient, type GeoResult } from "@app/geo";
 import { newPlaceId } from "@app/domain";
 import { useStore } from "../store";
 
+/**
+ * Contact identifier sent as Photon's `From` header (see PhotonClient —
+ * `User-Agent` is a forbidden header name the fetch spec drops silently, so
+ * `From`/`contactEmail` is the only lever that actually reaches the server).
+ * No repository URL or role mailbox exists anywhere in this repo yet, so this
+ * is an explicit placeholder rather than a real project contact — replace it
+ * with the project's repo URL or a real role address once one exists. Not a
+ * personal email address, and not anything found in local git config.
+ */
+const PHOTON_CONTACT = "travel-planner-app (no project contact configured yet)";
+
 const photon = new PhotonClient({
   cache: new MemoryGeoCache(),
   debounceMs: 300,
   appName: "travel-planner",
+  contactEmail: PHOTON_CONTACT,
 });
 
 const DEBOUNCE_MS = 300;

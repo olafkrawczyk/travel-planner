@@ -4,7 +4,7 @@ Working ref: `2e5243c5bf8feffd63845ce850a2543b956bab86`
 
 ## 1. One-paragraph pitch
 
-You give it a pile of places you want to see on a trip (30 spots, 5 days), how long you want to spend at each, any fixed appointments, and where you sleep. It hands back a day-by-day itinerary: which places on which day, in what order, with estimated arrival/departure times, starting and ending at your hotel. Edits recalculate in well under a second. Runs entirely in the browser; accounts and sync come later.
+You give it a pile of places you want to see on a trip (30 spots, 5 days), how long you want to spend at each, any fixed appointments, and where you sleep. It hands back a day-by-day itinerary: which places on which day, in what order, with estimated arrival/departure times, starting and ending at your hotel. A usable plan appears in well under a second, and edits recalculate in about that same time; the solver then keeps improving the plan in the background for a few seconds more (see §5.4-5.6). Runs entirely in the browser; accounts and sync come later.
 
 ## 2. Problem framing (this matters for algorithm choice)
 
@@ -210,7 +210,7 @@ score = w1 * travelMin + w2 * waitMin + w3 * (must-visit dropped) + w4 * (nice-t
 
 ### 5.4 Global improvement (anytime)
 
-**ALNS / ruin-and-recreate**: repeatedly remove 10–20% of places (random, or a geographic cluster, or the "worst" ones by detour), re-insert with the insertion heuristic across all days, accept if better (or with simulated-annealing probability). Run for a time budget (e.g. 300 ms) or until no improvement. Because it's anytime, the worker can post the current best every ~100 ms and the UI updates live — the user sees a good plan instantly and a better one a moment later.
+**ALNS / ruin-and-recreate**: repeatedly remove 10–20% of places (random, or a geographic cluster, or the "worst" ones by detour), re-insert with the insertion heuristic across all days, accept if better (or with simulated-annealing probability). Run for a time budget (shipped: 10s for a full solve, 5s for an edit — see §5.6) or until an improvement-stall early exit fires, whichever comes first. Because it's anytime, the worker posts the current best every ~100 ms and the UI updates live — the user sees a good plan instantly and a better one a moment later.
 
 Same loop handles "doesn't fit": an unscheduled pool is just another place the recreate step may insert if a slot opens.
 
@@ -221,14 +221,14 @@ On edit, don't start from scratch:
 - Place moved / dwell changed → recompute its matrix row+column, re-run 5.3 on affected day(s), run a short ALNS.
 - Drag to another day → remove from source day, insert into target day (cheapest feasible position), re-optimize both days.
 - Locked days are excluded from ruin; pinned orders are constraints in insertion.
-  Typical edit → new itinerary in <100 ms for N=50.
+  Typical edit → new itinerary in ~100-200 ms for N=50, independent of the ALNS time budget below: an edit's search is capped at a fixed iteration count (300 by default) that finishes well before the budget's wall-clock allowance is used — see `packages/solver/src/perf.test.ts`.
 
 ### 5.6 Performance budget
 
 - Matrix: O(N²) ≈ instant.
-- Giant tour + split: O(N²) ≈ instant.
+- Giant tour + split: O(N²) ≈ instant — the tour-improvement step evaluates each candidate move as an O(1) edge-cost delta rather than re-scoring the whole tour, which is what keeps this instant at N≈100 (previously ~3s; see `giantTour.ts`).
 - Insertion per day: O(n³) worst case, n≈10 → instant.
-- ALNS: time-boxed 300–1000 ms initial, 100 ms on edit.
+- ALNS: shipped as a generous wall-clock ceiling (10s initial solve, 5s on edit) that is rarely reached in practice — a fixed iteration cap binds first on edits (~100-200ms), and an improvement-stall early exit typically stops a full solve well before its ceiling too.
 - All in a Web Worker via Comlink; UI never blocks.
 
 ## 6. Technology
@@ -262,10 +262,10 @@ packages/storage  TripRepository + Dexie impl (later: remote impl)
 
 ## 7. UX principles
 
-- Map and timeline are always both visible (split view on desktop, tabs on mobile); hovering a stop highlights the marker and vice versa.
+- Map and timeline are always both visible: split view on desktop, a persistent map with a resizable bottom sheet for the timeline on mobile (not tabs — the map stays visible while browsing the timeline); hovering a stop highlights the marker and vice versa.
 - One colour per day everywhere.
 - Every solver decision is explainable: tooltip on a leg shows "18 min — transit heuristic (2.9 km)"; click to override.
-- Never a spinner for the solve — show the greedy plan immediately, then animate improvements in.
+- Never a *blocking* spinner for the solve — show the greedy plan immediately (a small non-blocking indicator shows while the solver keeps improving it in the background), then animate improvements in.
 - Unscheduled places are shown as a visible "couldn't fit" tray, never silently dropped.
 - Undo/redo for all edits (state is immutable snapshots, cheap).
 
@@ -298,7 +298,7 @@ packages/storage  TripRepository + Dexie impl (later: remote impl)
 Things that are cheap to get right on day one and painful to retrofit.
 
 - **Time representation:** the solver works in minutes-since-midnight per day, integers only. UI stores `"HH:mm"` strings plus one `timezone` on the trip. Never pass `Date` objects across the worker boundary or store them.
-- **Deterministic solver:** seeded RNG (`seed` in solver input). Same input → same itinerary. Needed for tests, for "why did my plan change?", and for reproducing bugs users report.
+- **Deterministic solver:** seeded RNG (`seed` in solver input); a time budget is converted up front into a fixed iteration count rather than checked live against the clock during the search, so the same seed + input + budget → the same itinerary regardless of machine speed. (A wall-clock safety valve exists as a last resort against a badly under-costed iteration estimate; it is sized to never engage in normal operation, and a run where it does engage falls outside this guarantee.) Needed for tests, for "why did my plan change?", and for reproducing bugs users report.
 - **Client-generated IDs** (nanoid/UUID v7) so places can be created offline and synced later without remapping.
 - **Fixtures from real trips:** save every real trip list you plan as JSON in `packages/solver/fixtures/`. They become the benchmark suite; track `score`, `totalTravelMin`, `unscheduled.length` per fixture in CI so a solver change that degrades quality fails the build.
 - **Solver input is a snapshot:** the worker receives a frozen `Trip` + settings, returns an `Itinerary`. No shared mutable state, no incremental protocol until the full re-solve is measurably too slow.
