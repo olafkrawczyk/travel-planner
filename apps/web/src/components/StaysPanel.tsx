@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import type { Place } from "@app/domain";
 import { recommendHotelAreas, type HotelAreaCandidate, type HotelAreaSegment } from "@app/solver";
 import { dayColor, staysFor, useStore, type Stay } from "../store";
@@ -65,6 +65,52 @@ export function defaultRecommendationOpen(hotel: Place | undefined): boolean {
   return hotelNeedsLocation(hotel) || !hotel;
 }
 
+/** Bed glyph for a stay row's hotel field — inline SVG (currentColor,
+ *  stroke-width 1.5, 16px) in place of the 🛏 emoji. */
+function BedIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M1.5 13V5.75a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1V9"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M1.5 13v-2.25a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1V13"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M9 9h5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="4.25" cy="7.25" r="0.9" fill="currentColor" />
+      <path d="M1.5 14.5V13M14.5 14.5V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Chevron used for every disclosure control in this panel (the "Stays"
+ *  section collapse and each row's "Hotel area suggestions" detail) — a
+ *  single inline SVG that rotates via the `open` class, replacing the
+ *  browser's native (inconsistent, uncolourable) disclosure triangle and
+ *  the old "▾"/"▸" text glyphs. */
+function ChevronIcon({ open, className }: { open: boolean; className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      className={"chevron-icon" + (open ? " open" : "") + (className ? ` ${className}` : "")}
+    >
+      <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /**
  * Stays panel: the stays-based view over the trip's bases, shown at the top of
  * the timeline sidebar (collapsible). Rows are hotel / check-in day / nights;
@@ -121,7 +167,7 @@ export function StaysPanel() {
       <button className="stays-header" onClick={() => setOpen(!open)} aria-expanded={open}>
         <h3>Stays</h3>
         <span className="spacer" />
-        <span className="icon-btn" aria-hidden>{open ? "▾" : "▸"}</span>
+        <ChevronIcon open={open} />
       </button>
       {open && (
         <>
@@ -144,34 +190,38 @@ export function StaysPanel() {
               const nightsFixed = minNights >= maxNights;
               return (
                 <li key={`stay-${i}`} className="stay-row">
-                  <span className="stay-hotel-icon" aria-hidden>🛏</span>
-                  <select
-                    value={stay.hotelId}
-                    aria-label={`Hotel of stay ${i + 1}`}
-                    onChange={(e) => {
-                      if (e.target.value === "__new__") addNewHotel(i);
-                      else setStays(withHotel(stays, i, e.target.value));
-                    }}
-                  >
-                    {[...(hotel && hotel.category === "hotel" ? [] : hotel ? [hotel] : []), ...hotels].map(
-                      (h) => (
-                        <option key={h.id} value={h.id}>
-                          {h.name}
-                        </option>
-                      ),
-                    )}
-                    <option value="__new__">＋ New hotel…</option>
-                  </select>
-                  {hotelNeedsLocation(hotel) && (
-                    <span
-                      className="badge badge-warning"
-                      title={`"${hotel!.name}" was created at a default location — open it (on the map or via ✎ edit) to set its real address.`}
+                  <span className="stay-hotel-icon" aria-hidden="true">
+                    <BedIcon />
+                  </span>
+                  <div className="stay-hotel-cell">
+                    <select
+                      value={stay.hotelId}
+                      aria-label={`Hotel of stay ${i + 1}`}
+                      onChange={(e) => {
+                        if (e.target.value === "__new__") addNewHotel(i);
+                        else setStays(withHotel(stays, i, e.target.value));
+                      }}
                     >
-                      needs location
-                    </span>
-                  )}
+                      {[...(hotel && hotel.category === "hotel" ? [] : hotel ? [hotel] : []), ...hotels].map(
+                        (h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.name}
+                          </option>
+                        ),
+                      )}
+                      <option value="__new__">＋ New hotel…</option>
+                    </select>
+                    {hotelNeedsLocation(hotel) && (
+                      <span
+                        className="badge badge-warning"
+                        title={`"${hotel!.name}" was created at a default location — open it (on the map or via ✎ edit) to set its real address.`}
+                      >
+                        needs location
+                      </span>
+                    )}
+                  </div>
                   <label className="stay-field">
-                    Check-in
+                    <span className="stay-field-label">Check-in</span>
                     {i === 0 ? (
                       <span className="stay-fixed" title="The first stay always starts on day 1">
                         Day 1 ({dateOf(0)})
@@ -200,7 +250,7 @@ export function StaysPanel() {
                     )}
                   </label>
                   <label className="stay-field">
-                    Nights
+                    <span className="stay-field-label">Nights</span>
                     <NightsInput
                       key={`${stay.checkInDayIdx}-${stay.nights}`}
                       nights={stay.nights}
@@ -218,18 +268,25 @@ export function StaysPanel() {
                       onCommit={(n) => setStays(withNights(stays, i, n, days))}
                     />
                   </label>
-                  {i > 0 && (
+                  {i > 0 ? (
                     <button
                       type="button"
-                      className="icon-btn"
+                      className="icon-btn stay-remove-btn"
                       title="Remove this stay (the previous stay covers its nights)"
                       onClick={() => setStays(withoutStay(stays, i))}
                     >
                       ✕
                     </button>
+                  ) : (
+                    <span aria-hidden="true" />
                   )}
                   <div className="hotel-area-wrap">
-                    <HotelAreaRecommendation idx={i} segment={hotelAreas[i]} hotel={hotel} />
+                    <HotelAreaRecommendation
+                      key={`area-${stay.checkInDayIdx}-${stay.hotelId}`}
+                      idx={i}
+                      segment={hotelAreas[i]}
+                      hotel={hotel}
+                    />
                   </div>
                 </li>
               );
@@ -238,13 +295,13 @@ export function StaysPanel() {
           {stays.length > 0 && days > 1 && (
             <div className="stays-actions">
               <label className="stay-field">
-                Add stay (split) at
+                <span className="stay-field-label">Change hotel starting</span>
                 <select value={splitDay} onChange={(e) => setSplitDay(e.target.value)}>
                   <option value="">Day…</option>
                   {Array.from({ length: days - 1 }, (_, k) => k + 1)
                     .filter((d) => {
                       // Only days strictly inside a stay are valid split points:
-                      // splitting at an existing check-in day is a no-op that
+                      // choosing an existing check-in day is a no-op that
                       // `withSplitAt` would silently ignore (looks broken).
                       const s = stays.find((x) => d > x.checkInDayIdx && d < x.checkInDayIdx + x.nights);
                       return s !== undefined;
@@ -259,17 +316,17 @@ export function StaysPanel() {
               <button
                 type="button"
                 disabled={!splitDay}
-                title="Split coverage: the new stay starts on that day"
+                title="This trip changes hotel from that day onward — pick the new hotel in the row that appears"
                 onClick={() => {
                   if (splitDay) {
                     const dayIdx = Number(splitDay);
                     setStays(withSplitAt(stays, dayIdx, days));
-                    setToast(`Stay added at day ${dayIdx + 1} — pick a different hotel in the new row (or ＋ New hotel).`);
+                    setToast(`Hotel change added at day ${dayIdx + 1} — pick a different hotel in the new row (or ＋ New hotel).`);
                   }
                   setSplitDay("");
                 }}
               >
-                Add stay
+                Add hotel change
               </button>
             </div>
           )}
@@ -302,6 +359,7 @@ function HotelAreaRecommendation({
 }) {
   const addHotelForStay = useStore((s) => s.addHotelForStay);
   const setToast = useStore((s) => s.setToast);
+  const [open, setOpen] = useState(defaultRecommendationOpen(hotel));
   if (!segment) return null;
 
   function useThisArea(candidate: HotelAreaCandidate) {
@@ -319,15 +377,19 @@ function HotelAreaRecommendation({
   }
 
   return (
-    <details className="hotel-area" open={defaultRecommendationOpen(hotel)}>
-      <summary>Hotel area suggestions</summary>
+    <details className="hotel-area" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>
+        <ChevronIcon open={open} className="hotel-area-chevron" />
+        Hotel area suggestions
+      </summary>
       <ul className="hotel-area-candidates">
         {segment.candidates.map((c, ci) => (
           <li key={ci} className="hotel-area-candidate">
             <div className="hotel-area-candidate-main">
               <strong>{c.label}</strong>
-              <span className="hint">
-                {formatRadiusKm(c.radiusKm)} · {formatAvgOneWayMin(c.avgOneWayMin)}
+              <span className="hint hotel-area-meta">
+                <span>{formatRadiusKm(c.radiusKm)}</span>
+                <span>{formatAvgOneWayMin(c.avgOneWayMin)}</span>
               </span>
               <p className="hotel-area-rationale">{c.rationale}</p>
             </div>
@@ -346,7 +408,7 @@ function HotelAreaRecommendation({
                 rel="noopener noreferrer"
                 title="Search hotels near here on Google Maps (opens in a new tab)"
               >
-                Search hotels here ↗
+                Search hotels here
               </a>
             </div>
           </li>
@@ -389,6 +451,7 @@ function NightsInput({
   return (
     <input
       type="number"
+      className="tnum"
       min={min}
       max={max}
       disabled={disabled}
@@ -412,10 +475,11 @@ function NightsInput({
   );
 }
 
-/** Horizontal coverage bar: one segment per stay, sized by nights, each in
- *  its own colour (the same day-identity ramp the map uses, indexed by stay
- *  order) so consecutive stays are tellable apart at a glance, with check-in
- *  days marked. */
+/** Horizontal coverage row: one entry per stay, sized by nights, each
+ *  carrying a small colour marker (the same day-identity ramp the map uses,
+ *  indexed by stay order) so consecutive stays are tellable apart at a
+ *  glance — ink-on-surface with a hairline rule, not a saturated full-bleed
+ *  fill, with check-in days marked. */
 function CoverageBar({ stays, places, days }: { stays: Stay[]; places: Place[]; days: number }) {
   const nameOf = (id: string) => places.find((p) => p.id === id)?.name ?? id;
   return (
@@ -423,11 +487,12 @@ function CoverageBar({ stays, places, days }: { stays: Stay[]; places: Place[]; 
       {stays.map((s, i) => (
         <div
           key={`${s.checkInDayIdx}-${s.hotelId}`}
-          className={"stays-coverage-seg" + (i === 0 ? " first" : "")}
-          style={{ flexGrow: s.nights, background: dayColor(i) }}
-          title={`Day ${s.checkInDayIdx + 1}: check in at ${nameOf(s.hotelId)} · ${s.nights} night${s.nights === 1 ? "" : "s"}`}
+          className="stays-coverage-seg"
+          style={{ flexGrow: s.nights } as CSSProperties}
+          title={`Day ${s.checkInDayIdx + 1}: check in at ${nameOf(s.hotelId)} for ${s.nights} night${s.nights === 1 ? "" : "s"}`}
         >
           {i > 0 && <span className="checkin-mark" title={`Check-in: day ${s.checkInDayIdx + 1}`} />}
+          <span className="seg-swatch" aria-hidden="true" style={{ background: dayColor(i) }} />
           <span className="seg-label">{nameOf(s.hotelId)}</span>
         </div>
       ))}

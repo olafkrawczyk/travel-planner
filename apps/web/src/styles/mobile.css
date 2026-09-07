@@ -1,3 +1,37 @@
+/* Header, narrow viewports: the desktop header is a single flex row that
+ * assumes plenty of width. Below ~600px that row no longer fits everything
+ * on one line without wrapping badly (four-line wrap, Undo/Redo/Regenerate
+ * pushed off-screen, a body-wide horizontal scrollbar) — see TripScreen.tsx.
+ * Fix: two explicit rows. Row 1 is identity (back, name, save status). Row 2
+ * is every actionable control, compressed to icon-only labels so it always
+ * fits in the viewport width with no horizontal scroll — Regenerate keeps
+ * its text because it is the one action a user must be able to recognise
+ * without a tooltip. */
+@media (max-width: 600px) {
+  .trip-header {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+  }
+
+  /* Row 1: back + name + save status/spinner. The stats block moves to row
+   * 2 (below the day strip's colour-coding, as the spec allows) so the name
+   * gets the room it needs to truncate instead of wrapping. */
+  .trip-back-label { display: none; }
+  .trip-stats { order: 3; width: 100%; }
+
+  /* Row 2: mode toggle + share/undo/redo/regenerate, full width, no wrap —
+   * icon-only secondary actions leave enough room that Regenerate (the
+   * app's core action) always has space and is never the one dropped. */
+  .trip-actions {
+    order: 2;
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+  .trip-actions .btn-label { display: none; }
+  .trip-actions button:not(.regenerate) { padding-left: var(--space-2); padding-right: var(--space-2); }
+}
+
 @media (max-width: 820px) {
   .split-view {
     display: flex;

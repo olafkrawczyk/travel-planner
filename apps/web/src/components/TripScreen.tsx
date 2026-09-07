@@ -22,6 +22,17 @@ function formatHHMM(iso: string | null): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/** Minutes as "18h 39m" (or "45m" under an hour) — raw minute counts like
+ *  "1119 min" aren't something a reader can size up at a glance. */
+function formatDuration(totalMin: number): string {
+  const m = Math.max(0, Math.round(totalMin));
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  if (h === 0) return `${mm}m`;
+  if (mm === 0) return `${h}h`;
+  return `${h}h ${mm}m`;
+}
+
 /** Mobile bottom-sheet height bounds and step, as a percentage of viewport
  *  height (P1 #8). 50 matches the sheet's previous fixed `height: 50vh`, so
  *  a trip screen opened before this change looks identical until dragged. */
@@ -37,13 +48,14 @@ function clampSheetVh(vh: number): number {
 /**
  * The solver's raw objective includes a 1e9 penalty per infeasible day (and,
  * absent a full solution, can be Infinity) — showing that number as "score
- * 1000000000" tells the user nothing. Anything at or above the penalty scale
- * is reported as an honest phrase instead, with the raw number moved to the
- * title for anyone who wants it.
+ * 1000000000" tells the user nothing, and the ordinary in-range score is an
+ * internal solver detail no user can act on either. Only the infeasible case
+ * is worth surfacing (as an honest phrase, with the raw number moved to the
+ * title for anyone who wants it) — a feasible score renders nothing.
  */
 const INFEASIBLE_SCORE_THRESHOLD = 1e9;
 
-function formatScore(score: number): { text: string; title?: string } {
+function formatScore(score: number): { text: string; title: string } | null {
   if (!Number.isFinite(score) || score >= INFEASIBLE_SCORE_THRESHOLD) {
     const raw = Number.isFinite(score) ? Math.round(score).toLocaleString() : "infinite";
     return {
@@ -51,7 +63,7 @@ function formatScore(score: number): { text: string; title?: string } {
       title: `Raw solver score: ${raw} — includes a large penalty for at least one infeasible day.`,
     };
   }
-  return { text: `score ${Math.round(score)}` };
+  return null;
 }
 
 /**
@@ -172,15 +184,33 @@ export function TripScreen() {
   return (
     <div className="trip-screen">
       <header className="trip-header">
-        <button onClick={closeTrip} title="Back to trips">
-          ← Trips
+        <button className="btn-ghost trip-back" onClick={closeTrip} title="Back to trips">
+          ← <span className="trip-back-label">Trips</span>
         </button>
-        <h2>{trip.name}</h2>
-        <span className="hint" title={scoreInfo?.title}>
-          {stats
-            ? `${Math.round(stats.totalTravelMin)} min travel · ${Math.round(stats.totalWaitMin)} min wait · ${scoreInfo!.text}`
-            : "solving…"}
-        </span>
+        <h2 className="trip-name" title={trip.name}>{trip.name}</h2>
+
+        <div className="trip-stats">
+          {stats ? (
+            <>
+              <span className="stat">
+                <span className="stat-value tnum">{formatDuration(stats.totalTravelMin)}</span>
+                <span className="stat-label">travel</span>
+              </span>
+              <span className="stat">
+                <span className="stat-value tnum">{formatDuration(stats.totalWaitMin)}</span>
+                <span className="stat-label">wait</span>
+              </span>
+              {scoreInfo && (
+                <span className="badge badge-warning" title={scoreInfo.title}>
+                  {scoreInfo.text}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="hint">solving…</span>
+          )}
+        </div>
+
         {solving && <span className="spinner" title="Solver running (non-blocking)" />}
         {saveState !== "idle" && (
           <span
@@ -194,41 +224,62 @@ export function TripScreen() {
                 : `Saved ${formatHHMM(savedAt)}`}
           </span>
         )}
-        <span className="spacer" />
-        <button onClick={() => void handleShare()} title="Copy a share link for this trip">
-          Share
-        </button>
-        <button onClick={undo} disabled={past.length === 0} title="Undo (Ctrl+Z)">
-          ↶ Undo
-        </button>
-        <button onClick={redo} disabled={future.length === 0} title="Redo (Ctrl+Shift+Z)">
-          ↷ Redo
-        </button>
-        <label className="car-only-toggle" title="Use only car/driving travel times (avoids urban transit & regional rail logic)">
-          <input
-            type="checkbox"
-            checked={trip.settings.carOnly ?? false}
-            onChange={(e) =>
-              mutateTrip((draft) => {
-                draft.settings.carOnly = e.target.checked;
-              })
-            }
-          />
-          🚗 Car / Foot
-        </label>
 
-        <button
-          onClick={regenerate}
-          disabled={solving}
-          className={"regenerate" + (dirty ? " dirty" : "")}
-          title={
-            dirty
-              ? `${pendingChanges} change${pendingChanges === 1 ? "" : "s"} not yet planned — recompute the itinerary (Ctrl+Enter)`
-              : "Recompute the itinerary (Ctrl+Enter)"
-          }
-        >
-          ⟳ Regenerate
-        </button>
+        <div className="trip-actions">
+          <div className="mode-toggle" role="radiogroup" aria-label="Travel mode">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!(trip.settings.carOnly ?? false)}
+              className={"mode-toggle-option" + (!(trip.settings.carOnly ?? false) ? " active" : "")}
+              onClick={() =>
+                mutateTrip((draft) => {
+                  draft.settings.carOnly = false;
+                })
+              }
+              title="Walking, transit and regional rail travel times"
+            >
+              Walk
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={trip.settings.carOnly ?? false}
+              className={"mode-toggle-option" + ((trip.settings.carOnly ?? false) ? " active" : "")}
+              onClick={() =>
+                mutateTrip((draft) => {
+                  draft.settings.carOnly = true;
+                })
+              }
+              title="Car/driving travel times only"
+            >
+              Car
+            </button>
+          </div>
+
+          <button className="btn-ghost" onClick={() => void handleShare()} title="Copy a share link for this trip">
+            <span className="btn-label">Share</span>
+          </button>
+          <button className="btn-ghost" onClick={undo} disabled={past.length === 0} title="Undo (Ctrl+Z)">
+            ↶ <span className="btn-label">Undo</span>
+          </button>
+          <button className="btn-ghost" onClick={redo} disabled={future.length === 0} title="Redo (Ctrl+Shift+Z)">
+            ↷ <span className="btn-label">Redo</span>
+          </button>
+
+          <button
+            onClick={regenerate}
+            disabled={solving}
+            className={"regenerate" + (dirty ? " dirty" : "")}
+            title={
+              dirty
+                ? `${pendingChanges} change${pendingChanges === 1 ? "" : "s"} not yet planned — recompute the itinerary (Ctrl+Enter)`
+                : "Recompute the itinerary (Ctrl+Enter)"
+            }
+          >
+            ⟳ Regenerate
+          </button>
+        </div>
       </header>
 
       <DayStrip />

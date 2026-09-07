@@ -1,0 +1,969 @@
+- generic [ref=f11e2]:
+  - generic [ref=f11e3]: Itinerary updated
+  - generic [ref=f11e89]:
+    - banner [ref=f11e90]:
+      - button "←" [ref=f11e91] [cursor=pointer]
+      - heading "Tokyo & Lake Kawaguchi 5-Day" [level=2] [ref=f11e92]
+      - generic [ref=f11e93]:
+        - generic [ref=f11e94]:
+          - generic [ref=f11e95]: 18h 39m
+          - generic [ref=f11e96]: travel
+        - generic [ref=f11e97]:
+          - generic [ref=f11e98]: 0m
+          - generic [ref=f11e99]: wait
+      - generic [ref=f11e100]:
+        - radiogroup "Travel mode" [ref=f11e101]:
+          - radio "Walk" [checked] [ref=f11e102] [cursor=pointer]
+          - radio "Car" [ref=f11e103] [cursor=pointer]
+        - button "Copy a share link for this trip" [ref=f11e104] [cursor=pointer]
+        - button "↶" [disabled] [ref=f11e105]
+        - button "↷" [disabled] [ref=f11e106]
+        - button "⟳ Regenerate" [ref=f11e107] [cursor=pointer]
+    - group "Trip days overview" [ref=f11e109]:
+      - button "Day 1, 09/07 — 98% of the day booked" [ref=f11e110] [cursor=pointer]:
+        - generic [ref=f11e111]:
+          - generic [aria-hidden] [ref=f11e112]: "1"
+          - generic [ref=f11e113]: 09/07
+          - button "Focus day 1 on the map" [ref=f11e114]
+        - generic [ref=f11e119]:
+          - progressbar "Day 1 time booked" [ref=f11e120]
+          - generic [aria-hidden] [ref=f11e122]: 98% booked
+      - button "Day 2, 09/08 — 94% of the day booked" [ref=f11e123] [cursor=pointer]:
+        - generic [ref=f11e124]:
+          - generic [aria-hidden] [ref=f11e125]: "2"
+          - generic [ref=f11e126]: 09/08
+          - button "Focus day 2 on the map" [ref=f11e127]
+        - generic [ref=f11e132]:
+          - progressbar "Day 2 time booked" [ref=f11e133]
+          - generic [aria-hidden] [ref=f11e135]: 94% booked
+      - button "Day 3, 09/09 — 83% of the day booked" [ref=f11e136] [cursor=pointer]:
+        - generic [ref=f11e137]:
+          - generic [aria-hidden] [ref=f11e138]: "3"
+          - generic [ref=f11e139]: 09/09
+          - button "Focus day 3 on the map" [ref=f11e140]
+        - generic [ref=f11e145]:
+          - progressbar "Day 3 time booked" [ref=f11e146]
+          - generic [aria-hidden] [ref=f11e148]: 83% booked
+      - button "Day 4, 09/10 — 81% of the day booked" [ref=f11e149] [cursor=pointer]:
+        - generic [ref=f11e150]:
+          - generic [aria-hidden] [ref=f11e151]: "4"
+          - generic [ref=f11e152]: 09/10
+          - button "Focus day 4 on the map" [ref=f11e153]
+        - generic [ref=f11e158]:
+          - progressbar "Day 4 time booked" [ref=f11e159]
+          - generic [aria-hidden] [ref=f11e161]: 81% booked
+      - button "Day 5, 09/11 — 87% of the day booked" [ref=f11e162] [cursor=pointer]:
+        - generic [ref=f11e163]:
+          - generic [aria-hidden] [ref=f11e164]: "5"
+          - generic [ref=f11e165]: 09/11
+          - button "Focus day 5 on the map" [ref=f11e166]
+        - generic [ref=f11e171]:
+          - progressbar "Day 5 time booked" [ref=f11e172]
+          - generic [aria-hidden] [ref=f11e174]: 87% booked
+    - generic [ref=f11e175]:
+      - generic [ref=f11e176]:
+        - textbox "Geocoding search" [ref=f11e178]:
+          - /placeholder: Search a place to add…
+        - generic [ref=f11e179]:
+          - button "Hotel" [pressed] [ref=f11e180] [cursor=pointer]
+          - generic:
+            - region "Map" [ref=f11e181]
+            - generic "Map marker" [ref=f11e182]:
+              - button "Hotel Gracery Shinjuku, hotel" [ref=f11e183] [cursor=pointer]:
+                - generic [ref=f11e184]: 🛏
+            - generic "Map marker" [ref=f11e185]:
+              - button "Meiji Jingu, temple, day 3" [ref=f11e186] [cursor=pointer]: "2"
+              - generic [aria-hidden]: ⛩
+            - generic "Map marker" [ref=f11e187]:
+              - button "Nezu Museum, museum, day 4" [ref=f11e188] [cursor=pointer]: "6"
+              - generic [aria-hidden]: 🏛
+            - generic "Map marker" [ref=f11e189]:
+              - button "Shibuya Sky, viewpoint, day 3" [ref=f11e190] [cursor=pointer]: "3"
+              - generic [aria-hidden]: 👁
+            - generic "Map marker" [ref=f11e191]:
+              - button "Shinjuku Gyoen National Garden, park, day 3" [ref=f11e192] [cursor=pointer]: "1"
+              - generic [aria-hidden]: 🌳
+            - generic "Map marker" [ref=f11e193]:
+              - button "Omoide Yokocho, restaurant, day 2" [ref=f11e194] [cursor=pointer]: "1"
+              - generic [aria-hidden]: 🍴
+            - generic "Map marker" [ref=f11e195]:
+              - button "Tokyo Metro Gov Bldg, viewpoint, day 3" [ref=f11e196] [cursor=pointer]: "6"
+              - generic [aria-hidden]: 👁
+            - generic "Map marker" [ref=f11e197]:
+              - button "Sensō-ji, temple, day 2" [ref=f11e198] [cursor=pointer]: "3"
+              - generic [aria-hidden]: ⛩
+            - generic "Map marker" [ref=f11e199]:
+              - button "Natl Museum of Western Art, museum, day 4" [ref=f11e200] [cursor=pointer]: "2"
+              - generic [aria-hidden]: 🏛
+            - generic "Map marker" [ref=f11e201]:
+              - button "Ameyoko Market, shop, day 4" [ref=f11e202] [cursor=pointer]: "1"
+              - generic [aria-hidden]: 🛍
+            - generic "Map marker" [ref=f11e203]:
+              - button "Kanda Myoujin Shrine, temple, day 5" [ref=f11e204] [cursor=pointer]: "7"
+              - generic [aria-hidden]: ⛩
+            - generic "Map marker" [ref=f11e205]:
+              - button "Cafe de L'ambre, cafe, day 5" [ref=f11e206] [cursor=pointer]: "4"
+              - generic [aria-hidden]: ☕
+            - generic "Map marker" [ref=f11e207]:
+              - button "GINZA SIX, shop, day 5" [ref=f11e208] [cursor=pointer]: "3"
+              - generic [aria-hidden]: 🛍
+            - generic "Map marker" [ref=f11e209]:
+              - button "Tokyo Station, viewpoint, day 5" [ref=f11e210] [cursor=pointer]: "5"
+              - generic [aria-hidden]: 👁
+            - generic "Map marker" [ref=f11e211]:
+              - button "Shinjuku Station (Departure), place, day 2" [ref=f11e212] [cursor=pointer]: "2"
+              - generic [aria-hidden]: •
+            - generic "Map marker" [ref=f11e213]:
+              - button "Arakurayama Sengen Park, park, day 1" [ref=f11e214] [cursor=pointer]: "1"
+              - generic [aria-hidden]: 🌳
+            - generic "Map marker" [ref=f11e215]:
+              - button "Chureito Pagoda, viewpoint, day 1" [ref=f11e216] [cursor=pointer]: "2"
+              - generic [aria-hidden]: 👁
+            - generic "Map marker" [ref=f11e217]:
+              - button "Kawaguchiko Station, place, day 1" [ref=f11e218] [cursor=pointer]: "5"
+              - generic [aria-hidden]: •
+            - generic "Map marker" [ref=f11e219]:
+              - button "Hoto Fudo, restaurant, day 1" [ref=f11e220] [cursor=pointer]: "4"
+              - generic [aria-hidden]: 🍴
+            - generic "Map marker" [ref=f11e221]:
+              - button "Oishi Park, park, day 1" [ref=f11e222] [cursor=pointer]: "7"
+              - generic [aria-hidden]: 🌳
+            - generic "Map marker" [ref=f11e223]:
+              - button "Mt. Fuji Panoramic Ropeway, viewpoint, day 1" [ref=f11e224] [cursor=pointer]: "3"
+              - generic [aria-hidden]: 👁
+            - generic "Map marker" [ref=f11e225]:
+              - button "Lake Kawaguchi, viewpoint, day 1" [ref=f11e226] [cursor=pointer]: "6"
+              - generic [aria-hidden]: 👁
+            - generic "Map marker" [ref=f11e227]:
+              - button "Tsukiji Outer Market, restaurant, day 5" [ref=f11e228] [cursor=pointer]: "2"
+              - generic [aria-hidden]: 🍴
+            - generic "Map marker" [ref=f11e229]:
+              - button "teamLab Planets TOKYO DMM, museum, day 5" [ref=f11e230] [cursor=pointer]: "1"
+              - generic [aria-hidden]: 🏛
+            - generic "Map marker" [ref=f11e231]:
+              - button "Odaiba Marine Park, park, day 3" [ref=f11e232] [cursor=pointer]: "5"
+              - generic [aria-hidden]: 🌳
+            - generic "Map marker" [ref=f11e233]:
+              - button "The National Art Center, Tokyo, museum, day 4" [ref=f11e234] [cursor=pointer]: "5"
+              - generic [aria-hidden]: 🏛
+            - generic "Map marker" [ref=f11e235]:
+              - button "21_21 Design Sight, museum, day 4" [ref=f11e236] [cursor=pointer]: "4"
+              - generic [aria-hidden]: 🏛
+            - generic "Map marker" [ref=f11e237]:
+              - button "Roppongi Hills Mori Tower, viewpoint, day 4" [ref=f11e238] [cursor=pointer]: "3"
+              - generic [aria-hidden]: 👁
+            - generic "Map marker" [ref=f11e239]:
+              - button "Inokashira Park, park, day 2" [ref=f11e240] [cursor=pointer]: "5"
+              - generic [aria-hidden]: 🌳
+            - generic "Map marker" [ref=f11e241]:
+              - button "Nakano Broadway, shop, day 2" [ref=f11e242] [cursor=pointer]: "6"
+              - generic [aria-hidden]: 🛍
+            - generic "Map marker" [ref=f11e243]:
+              - button "Shimokitazawa, shop, day 2" [ref=f11e244] [cursor=pointer]: "4"
+              - generic [aria-hidden]: 🛍
+            - generic "Map marker" [ref=f11e245]:
+              - button "GLITCH COFFEE & ROASTERS, cafe, day 5" [ref=f11e246] [cursor=pointer]: "6"
+              - generic [aria-hidden]: ☕
+            - generic "Map marker" [ref=f11e247]:
+              - button "DAIKANYAMA T-SITE, shop, day 3" [ref=f11e248] [cursor=pointer]: "4"
+              - generic [aria-hidden]: 🛍
+          - generic:
+            - generic [ref=f11e249]:
+              - link "OpenFreeMap" [ref=f11e250] [cursor=pointer]:
+                - /url: https://openfreemap.org
+              - text: ©
+              - link "OpenMapTiles" [ref=f11e251] [cursor=pointer]:
+                - /url: https://www.openmaptiles.org/
+              - text: Data from
+              - link "OpenStreetMap" [ref=f11e252] [cursor=pointer]:
+                - /url: https://www.openstreetmap.org/copyright
+              - text: contributors ·
+              - link "geocoding by Photon" [ref=f11e253] [cursor=pointer]:
+                - /url: https://photon.komoot.io
+              - text: contributors
+            - generic [ref=f11e254]:
+              - button "Zoom in" [ref=f11e255] [cursor=pointer]
+              - button "Zoom out" [ref=f11e257] [cursor=pointer]
+              - button "Reset bearing to north" [ref=f11e259]
+      - generic [ref=f11e261]:
+        - separator "Resize itinerary panel" [ref=f11e262]
+        - generic [ref=f11e263]:
+          - button [expanded] [ref=f11e264] [cursor=pointer]:
+            - heading "Stays" [level=3] [ref=f11e265]
+          - img "Stays coverage across the trip days" [ref=f11e268]:
+            - 'generic "Day 1: check in at Hotel Gracery Shinjuku for 5 nights" [ref=f11e269]': Hotel Gracery Shinjuku
+          - list [ref=f11e272]:
+            - listitem [ref=f11e273]:
+              - combobox "Hotel of stay 1" [ref=f11e281]:
+                - option "Hotel Gracery Shinjuku" [selected]
+                - option "＋ New hotel…"
+              - generic [ref=f11e282]:
+                - generic [ref=f11e283]: Check-in
+                - generic "The first stay always starts on day 1" [ref=f11e284]: Day 1 (2026-09-07)
+              - generic [ref=f11e285]:
+                - generic [ref=f11e286]: Nights
+                - spinbutton "Nights of stay 1" [disabled] [ref=f11e287]: "5"
+              - group [ref=f11e289]:
+                - generic "Hotel area suggestions" [ref=f11e290] [cursor=pointer]
+          - generic [ref=f11e293]:
+            - generic [ref=f11e294]:
+              - generic [ref=f11e295]: Change hotel starting
+              - combobox "Change hotel starting" [ref=f11e296]:
+                - option "Day…" [selected]
+                - option "Day 2 (2026-09-08)"
+                - option "Day 3 (2026-09-09)"
+                - option "Day 4 (2026-09-10)"
+                - option "Day 5 (2026-09-11)"
+            - button "Add hotel change" [disabled] [ref=f11e297]
+        - generic [ref=f11e298]:
+          - generic [ref=f11e299]:
+            - generic "Click to focus this day on the map" [ref=f11e300] [cursor=pointer]:
+              - heading "Day 1 2026-09-07" [level=3] [ref=f11e301]:
+                - generic [aria-hidden] [ref=f11e302]: "1"
+                - text: Day 1
+                - generic [ref=f11e303]: 2026-09-07
+              - generic [ref=f11e304]:
+                - textbox "Edit day start time" [ref=f11e305]: 09:00
+                - text: –
+                - textbox "Edit day end time" [ref=f11e306]: 21:00
+              - button "Focus this day on the map" [ref=f11e307]
+              - button "Hide this day on the map" [ref=f11e311]
+              - button "Lock day" [ref=f11e315]
+              - button "Day settings" [ref=f11e319]
+            - generic [ref=f11e323]:
+              - generic: Day End (21:00)
+              - generic [ref=f11e324]:
+                - generic [ref=f11e325]:
+                  - generic "regional rail heuristic (109.4 km)" [ref=f11e330]:
+                    - button "129 min transit" [ref=f11e331] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e332] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6951%2C139.7018&destination=35.5015%2C138.8016&travelmode=transit
+                  - generic [ref=f11e337]:
+                    - generic [ref=f11e338]:
+                      - generic [ref=f11e339]: 11:09–12:09
+                      - generic [aria-hidden] [ref=f11e341]: "1"
+                    - generic [ref=f11e342]:
+                      - button "Arakurayama Sengen Park" [ref=f11e343] [cursor=pointer]
+                      - generic [ref=f11e344]:
+                        - button "Pin to position" [ref=f11e345] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e349]:
+                          - option "Move to…" [selected]
+                          - option "Day 1" [disabled]
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e350]:
+                  - generic "walk heuristic (0.0 km)" [ref=f11e355]:
+                    - button "0 min walk" [ref=f11e356] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e357] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.5015%2C138.8016&destination=35.5014%2C138.8015&travelmode=walking
+                  - generic [ref=f11e362]:
+                    - generic [ref=f11e363]:
+                      - generic [ref=f11e364]: 12:09–12:54
+                      - generic [aria-hidden] [ref=f11e366]: "2"
+                    - generic [ref=f11e367]:
+                      - button "Chureito Pagoda" [ref=f11e368] [cursor=pointer]
+                      - generic [ref=f11e369]:
+                        - button "Pin to position" [ref=f11e370] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e374]:
+                          - option "Move to…" [selected]
+                          - option "Day 1" [disabled]
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e375]:
+                  - generic "urban transit heuristic (3.1 km)" [ref=f11e380]:
+                    - button "26 min transit" [ref=f11e381] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e382] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.5014%2C138.8015&destination=35.5036%2C138.775&travelmode=transit
+                  - generic [ref=f11e387]:
+                    - generic [ref=f11e388]:
+                      - generic [ref=f11e389]: 13:20–14:20
+                      - generic [aria-hidden] [ref=f11e391]: "3"
+                    - generic [ref=f11e392]:
+                      - button "Mt. Fuji Panoramic Ropeway" [ref=f11e393] [cursor=pointer]
+                      - generic [ref=f11e394]:
+                        - button "Pin to position" [ref=f11e395] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e399]:
+                          - option "Move to…" [selected]
+                          - option "Day 1" [disabled]
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e400]:
+                  - generic "walk heuristic (1.1 km)" [ref=f11e405]:
+                    - button "14 min walk" [ref=f11e406] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e407] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.5036%2C138.775&destination=35.4984%2C138.7684&travelmode=walking
+                  - generic [ref=f11e412]:
+                    - generic [ref=f11e413]:
+                      - generic [ref=f11e414]: 14:34–15:34
+                      - generic [aria-hidden] [ref=f11e416]: "4"
+                    - generic [ref=f11e417]:
+                      - button "Hoto Fudo" [ref=f11e418] [cursor=pointer]
+                      - generic [ref=f11e419]:
+                        - button "Pin to position" [ref=f11e420] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e424]:
+                          - option "Move to…" [selected]
+                          - option "Day 1" [disabled]
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e425]:
+                  - generic "walk heuristic (0.0 km)" [ref=f11e430]:
+                    - button "1 min walk" [ref=f11e431] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e432] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.4984%2C138.7684&destination=35.4981%2C138.7686&travelmode=walking
+                  - generic [ref=f11e437]:
+                    - generic [ref=f11e438]:
+                      - generic [ref=f11e439]: 15:35–15:50
+                      - generic [aria-hidden] [ref=f11e441]: "5"
+                    - generic [ref=f11e442]:
+                      - button "Kawaguchiko Station" [ref=f11e443] [cursor=pointer]
+                      - generic [ref=f11e444]:
+                        - button "Pin to position" [ref=f11e445] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e449]:
+                          - option "Move to…" [selected]
+                          - option "Day 1" [disabled]
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e450]:
+                  - generic "urban transit heuristic (3.3 km)" [ref=f11e455]:
+                    - button "27 min transit" [ref=f11e456] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e457] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.4981%2C138.7686&destination=35.5186%2C138.7561&travelmode=transit
+                  - generic [ref=f11e462]:
+                    - generic [ref=f11e463]:
+                      - generic [ref=f11e464]: 16:17–17:17
+                      - generic [aria-hidden] [ref=f11e466]: "6"
+                    - generic [ref=f11e467]:
+                      - button "Lake Kawaguchi" [ref=f11e468] [cursor=pointer]
+                      - generic [ref=f11e469]:
+                        - button "Pin to position" [ref=f11e470] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e474]:
+                          - option "Move to…" [selected]
+                          - option "Day 1" [disabled]
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e475]:
+                  - generic "walk heuristic (1.4 km)" [ref=f11e480]:
+                    - button "19 min walk" [ref=f11e481] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e482] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.5186%2C138.7561&destination=35.5229%2C138.7454&travelmode=walking
+                  - generic [ref=f11e487]:
+                    - generic [ref=f11e488]:
+                      - generic [ref=f11e489]: 17:35–18:35
+                      - generic [aria-hidden] [ref=f11e491]: "7"
+                    - generic [ref=f11e492]:
+                      - button "Oishi Park" [ref=f11e493] [cursor=pointer]
+                      - generic [ref=f11e494]:
+                        - button "Pin to position" [ref=f11e495] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e499]:
+                          - option "Move to…" [selected]
+                          - option "Day 1" [disabled]
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                  - generic "regional rail heuristic (115.1 km)" [ref=f11e504]:
+                    - button "134 min transit" [ref=f11e505] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e506] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.5229%2C138.7454&destination=35.6951%2C139.7018&travelmode=transit
+            - paragraph [ref=f11e511]: "Return to Hotel Gracery Shinjuku: 133.8 min · slack 11 min · bases: Hotel Gracery Shinjuku → Hotel Gracery Shinjuku"
+          - generic [ref=f11e512]:
+            - generic "Click to focus this day on the map" [ref=f11e513] [cursor=pointer]:
+              - heading "Day 2 2026-09-08" [level=3] [ref=f11e514]:
+                - generic [aria-hidden] [ref=f11e515]: "2"
+                - text: Day 2
+                - generic [ref=f11e516]: 2026-09-08
+              - generic [ref=f11e517]:
+                - textbox "Edit day start time" [ref=f11e518]: 09:00
+                - text: –
+                - textbox "Edit day end time" [ref=f11e519]: 21:00
+              - button "Focus this day on the map" [ref=f11e520]
+              - button "Hide this day on the map" [ref=f11e524]
+              - button "Lock day" [ref=f11e528]
+              - button "Day settings" [ref=f11e532]
+            - generic [ref=f11e536]:
+              - generic: Day End (21:00)
+              - generic [ref=f11e537]:
+                - generic [ref=f11e538]:
+                  - generic "walk heuristic (0.4 km)" [ref=f11e543]:
+                    - button "5 min walk" [ref=f11e544] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e545] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6951%2C139.7018&destination=35.6931%2C139.6995&travelmode=walking
+                  - generic [ref=f11e550]:
+                    - generic [ref=f11e551]:
+                      - generic [ref=f11e552]: 09:05–10:05
+                      - generic [aria-hidden] [ref=f11e554]: "1"
+                    - generic [ref=f11e555]:
+                      - button "Omoide Yokocho" [ref=f11e556] [cursor=pointer]
+                      - generic [ref=f11e557]:
+                        - button "Pin to position" [ref=f11e558] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e562]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2" [disabled]
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e563]:
+                  - generic "walk heuristic (0.5 km)" [ref=f11e568]:
+                    - button "7 min walk" [ref=f11e569] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e570] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6931%2C139.6995&destination=35.6896%2C139.7005&travelmode=walking
+                  - generic [ref=f11e575]:
+                    - generic [ref=f11e576]:
+                      - generic [ref=f11e577]: 10:12–10:42
+                      - generic [aria-hidden] [ref=f11e579]: "2"
+                    - generic [ref=f11e580]:
+                      - button "Shinjuku Station (Departure)" [ref=f11e581] [cursor=pointer]
+                      - generic [ref=f11e582]:
+                        - button "Pin to position" [ref=f11e583] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e587]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2" [disabled]
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e588]:
+                  - generic "regional rail heuristic (11.9 km)" [ref=f11e593]:
+                    - button "45 min transit" [ref=f11e594] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e595] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6896%2C139.7005&destination=35.7148%2C139.7967&travelmode=transit
+                  - generic [ref=f11e600]:
+                    - generic [ref=f11e601]:
+                      - generic [ref=f11e602]: 11:27–12:57
+                      - generic [aria-hidden] [ref=f11e604]: "3"
+                    - generic [ref=f11e605]:
+                      - button "Sensō-ji" [ref=f11e606] [cursor=pointer]
+                      - generic [ref=f11e607]:
+                        - button "Pin to position" [ref=f11e608] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e612]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2" [disabled]
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e613]:
+                  - generic "regional rail heuristic (16.9 km)" [ref=f11e618]:
+                    - button "49 min transit" [ref=f11e619] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e620] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.7148%2C139.7967&destination=35.6613%2C139.6683&travelmode=transit
+                  - generic [ref=f11e625]:
+                    - generic [ref=f11e626]:
+                      - generic [ref=f11e627]: 13:46–15:16
+                      - generic [aria-hidden] [ref=f11e629]: "4"
+                    - generic [ref=f11e630]:
+                      - button "Shimokitazawa" [ref=f11e631] [cursor=pointer]
+                      - generic [ref=f11e632]:
+                        - button "Pin to position" [ref=f11e633] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e637]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2" [disabled]
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e638]:
+                  - generic "regional rail heuristic (12.1 km)" [ref=f11e643]:
+                    - button "45 min transit" [ref=f11e644] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e645] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6613%2C139.6683&destination=35.7001%2C139.5772&travelmode=transit
+                  - generic [ref=f11e650]:
+                    - generic [ref=f11e651]:
+                      - generic [ref=f11e652]: 16:01–17:31
+                      - generic [aria-hidden] [ref=f11e654]: "5"
+                    - generic [ref=f11e655]:
+                      - button "Inokashira Park" [ref=f11e656] [cursor=pointer]
+                      - generic [ref=f11e657]:
+                        - button "Pin to position" [ref=f11e658] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e662]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2" [disabled]
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e663]:
+                  - generic "regional rail heuristic (10.5 km)" [ref=f11e668]:
+                    - button "44 min transit" [ref=f11e669] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e670] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.7001%2C139.5772&destination=35.7087%2C139.6658&travelmode=transit
+                  - generic [ref=f11e675]:
+                    - generic [ref=f11e676]:
+                      - generic [ref=f11e677]: 18:14–19:44
+                      - generic [aria-hidden] [ref=f11e679]: "6"
+                    - generic [ref=f11e680]:
+                      - button "Nakano Broadway" [ref=f11e681] [cursor=pointer]
+                      - generic [ref=f11e682]:
+                        - button "Pin to position" [ref=f11e683] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e687]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2" [disabled]
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5"
+                  - generic "urban transit heuristic (4.7 km)" [ref=f11e692]:
+                    - button "32 min transit" [ref=f11e693] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e694] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.7087%2C139.6658&destination=35.6951%2C139.7018&travelmode=transit
+            - paragraph [ref=f11e699]: "Return to Hotel Gracery Shinjuku: 31.7 min · slack 44 min · bases: Hotel Gracery Shinjuku → Hotel Gracery Shinjuku"
+          - generic [ref=f11e700]:
+            - generic "Click to focus this day on the map" [ref=f11e701] [cursor=pointer]:
+              - heading "Day 3 2026-09-09" [level=3] [ref=f11e702]:
+                - generic [aria-hidden] [ref=f11e703]: "3"
+                - text: Day 3
+                - generic [ref=f11e704]: 2026-09-09
+              - generic [ref=f11e705]:
+                - textbox "Edit day start time" [ref=f11e706]: 09:00
+                - text: –
+                - textbox "Edit day end time" [ref=f11e707]: 21:00
+              - button "Focus this day on the map" [ref=f11e708]
+              - button "Hide this day on the map" [ref=f11e712]
+              - button "Lock day" [ref=f11e716]
+              - button "Day settings" [ref=f11e720]
+            - generic [ref=f11e724]:
+              - generic: Day End (21:00)
+              - generic [ref=f11e725]:
+                - generic [ref=f11e726]:
+                  - generic "urban transit heuristic (1.7 km)" [ref=f11e731]:
+                    - button "20 min transit" [ref=f11e732] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e733] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6951%2C139.7018&destination=35.6852%2C139.71&travelmode=transit
+                  - generic [ref=f11e738]:
+                    - generic [ref=f11e739]:
+                      - generic [ref=f11e740]: 09:20–10:50
+                      - generic [aria-hidden] [ref=f11e742]: "1"
+                    - generic [ref=f11e743]:
+                      - button "Shinjuku Gyoen National Garden" [ref=f11e744] [cursor=pointer]
+                      - generic [ref=f11e745]:
+                        - button "Pin to position" [ref=f11e746] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e750]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3" [disabled]
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e751]:
+                  - generic "urban transit heuristic (1.8 km)" [ref=f11e756]:
+                    - button "21 min transit" [ref=f11e757] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e758] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6852%2C139.71&destination=35.6764%2C139.6993&travelmode=transit
+                  - generic [ref=f11e763]:
+                    - generic [ref=f11e764]:
+                      - generic [ref=f11e765]: 11:11–12:41
+                      - generic [aria-hidden] [ref=f11e767]: "2"
+                    - generic [ref=f11e768]:
+                      - button "Meiji Jingu" [ref=f11e769] [cursor=pointer]
+                      - generic [ref=f11e770]:
+                        - button "Pin to position" [ref=f11e771] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e775]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3" [disabled]
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e776]:
+                  - generic "urban transit heuristic (2.6 km)" [ref=f11e781]:
+                    - button "24 min transit" [ref=f11e782] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e783] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6764%2C139.6993&destination=35.6585%2C139.7022&travelmode=transit
+                  - generic [ref=f11e788]:
+                    - generic [ref=f11e789]:
+                      - generic [ref=f11e790]: 13:05–14:05
+                      - generic [aria-hidden] [ref=f11e792]: "3"
+                    - generic [ref=f11e793]:
+                      - button "Shibuya Sky" [ref=f11e794] [cursor=pointer]
+                      - generic [ref=f11e795]:
+                        - button "Pin to position" [ref=f11e796] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e800]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3" [disabled]
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e801]:
+                  - generic "walk heuristic (1.4 km)" [ref=f11e806]:
+                    - button "19 min walk" [ref=f11e807] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e808] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6585%2C139.7022&destination=35.6488%2C139.6995&travelmode=walking
+                  - generic [ref=f11e813]:
+                    - generic [ref=f11e814]:
+                      - generic [ref=f11e815]: 14:24–15:24
+                      - generic [aria-hidden] [ref=f11e817]: "4"
+                    - generic [ref=f11e818]:
+                      - button "DAIKANYAMA T-SITE" [ref=f11e819] [cursor=pointer]
+                      - generic [ref=f11e820]:
+                        - button "Pin to position" [ref=f11e821] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e825]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3" [disabled]
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e826]:
+                  - generic "regional rail heuristic (9.2 km)" [ref=f11e831]:
+                    - button "42 min transit" [ref=f11e832] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e833] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6488%2C139.6995&destination=35.6307%2C139.7745&travelmode=transit
+                  - generic [ref=f11e838]:
+                    - generic [ref=f11e839]:
+                      - generic [ref=f11e840]: 16:07–17:07
+                      - generic [aria-hidden] [ref=f11e842]: "5"
+                    - generic [ref=f11e843]:
+                      - button "Odaiba Marine Park" [ref=f11e844] [cursor=pointer]
+                      - generic [ref=f11e845]:
+                        - button "Pin to position" [ref=f11e846] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e850]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3" [disabled]
+                          - option "Day 4"
+                          - option "Day 5"
+                - generic [ref=f11e851]:
+                  - generic "regional rail heuristic (12.9 km)" [ref=f11e856]:
+                    - button "46 min transit" [ref=f11e857] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e858] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6307%2C139.7745&destination=35.6896%2C139.6921&travelmode=transit
+                  - generic [ref=f11e863]:
+                    - generic [ref=f11e864]:
+                      - generic [ref=f11e865]: 17:52–18:37
+                      - generic [aria-hidden] [ref=f11e867]: "6"
+                    - generic [ref=f11e868]:
+                      - button "Tokyo Metro Gov Bldg" [ref=f11e869] [cursor=pointer]
+                      - generic [ref=f11e870]:
+                        - button "Pin to position" [ref=f11e871] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e875]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3" [disabled]
+                          - option "Day 4"
+                          - option "Day 5"
+                  - generic "walk heuristic (1.4 km)" [ref=f11e880]:
+                    - button "19 min walk" [ref=f11e881] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e882] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6896%2C139.6921&destination=35.6951%2C139.7018&travelmode=walking
+            - paragraph [ref=f11e887]: "Return to Hotel Gracery Shinjuku: 18.5 min · slack 124 min · bases: Hotel Gracery Shinjuku → Hotel Gracery Shinjuku"
+          - generic [ref=f11e888]:
+            - generic "Click to focus this day on the map" [ref=f11e889] [cursor=pointer]:
+              - heading "Day 4 2026-09-10" [level=3] [ref=f11e890]:
+                - generic [aria-hidden] [ref=f11e891]: "4"
+                - text: Day 4
+                - generic [ref=f11e892]: 2026-09-10
+              - generic [ref=f11e893]:
+                - textbox "Edit day start time" [ref=f11e894]: 09:00
+                - text: –
+                - textbox "Edit day end time" [ref=f11e895]: 21:00
+              - button "Focus this day on the map" [ref=f11e896]
+              - button "Hide this day on the map" [ref=f11e900]
+              - button "Lock day" [ref=f11e904]
+              - button "Day settings" [ref=f11e908]
+            - generic [ref=f11e912]:
+              - generic: Day End (21:00)
+              - generic [ref=f11e913]:
+                - generic [ref=f11e914]:
+                  - generic "regional rail heuristic (8.8 km)" [ref=f11e919]:
+                    - button "42 min transit" [ref=f11e920] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e921] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6951%2C139.7018&destination=35.7089%2C139.7744&travelmode=transit
+                  - generic [ref=f11e926]:
+                    - generic [ref=f11e927]:
+                      - generic [ref=f11e928]: 09:42–10:42
+                      - generic [aria-hidden] [ref=f11e930]: "1"
+                    - generic [ref=f11e931]:
+                      - button "Ameyoko Market" [ref=f11e932] [cursor=pointer]
+                      - generic [ref=f11e933]:
+                        - button "Pin to position" [ref=f11e934] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e938]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4" [disabled]
+                          - option "Day 5"
+                - generic [ref=f11e939]:
+                  - generic "walk heuristic (0.9 km)" [ref=f11e944]:
+                    - button "13 min walk" [ref=f11e945] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e946] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.7089%2C139.7744&destination=35.7153%2C139.7758&travelmode=walking
+                  - generic [ref=f11e951]:
+                    - generic [ref=f11e952]:
+                      - generic [ref=f11e953]: 10:55–12:25
+                      - generic [aria-hidden] [ref=f11e955]: "2"
+                    - generic [ref=f11e956]:
+                      - button "Natl Museum of Western Art" [ref=f11e957] [cursor=pointer]
+                      - generic [ref=f11e958]:
+                        - button "Pin to position" [ref=f11e959] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e963]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4" [disabled]
+                          - option "Day 5"
+                - generic [ref=f11e964]:
+                  - generic "regional rail heuristic (9.6 km)" [ref=f11e969]:
+                    - button "43 min transit" [ref=f11e970] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e971] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.7153%2C139.7758&destination=35.6605%2C139.7291&travelmode=transit
+                  - generic [ref=f11e976]:
+                    - generic [ref=f11e977]:
+                      - generic [ref=f11e978]: 13:07–14:07
+                      - generic [aria-hidden] [ref=f11e980]: "3"
+                    - generic [ref=f11e981]:
+                      - button "Roppongi Hills Mori Tower" [ref=f11e982] [cursor=pointer]
+                      - generic [ref=f11e983]:
+                        - button "Pin to position" [ref=f11e984] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e988]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4" [disabled]
+                          - option "Day 5"
+                - generic [ref=f11e989]:
+                  - generic "walk heuristic (0.9 km)" [ref=f11e994]:
+                    - button "12 min walk" [ref=f11e995] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e996] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6605%2C139.7291&destination=35.6665%2C139.7303&travelmode=walking
+                  - generic [ref=f11e1001]:
+                    - generic [ref=f11e1002]:
+                      - generic [ref=f11e1003]: 14:19–15:19
+                      - generic [aria-hidden] [ref=f11e1005]: "4"
+                    - generic [ref=f11e1006]:
+                      - button "21_21 Design Sight" [ref=f11e1007] [cursor=pointer]
+                      - generic [ref=f11e1008]:
+                        - button "Pin to position" [ref=f11e1009] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1013]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4" [disabled]
+                          - option "Day 5"
+                - generic [ref=f11e1014]:
+                  - generic "walk heuristic (0.5 km)" [ref=f11e1019]:
+                    - button "7 min walk" [ref=f11e1020] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1021] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6665%2C139.7303&destination=35.6652%2C139.7263&travelmode=walking
+                  - generic [ref=f11e1026]:
+                    - generic [ref=f11e1027]:
+                      - generic [ref=f11e1028]: 15:26–16:56
+                      - generic [aria-hidden] [ref=f11e1030]: "5"
+                    - generic [ref=f11e1031]:
+                      - button "The National Art Center, Tokyo" [ref=f11e1032] [cursor=pointer]
+                      - generic [ref=f11e1033]:
+                        - button "Pin to position" [ref=f11e1034] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1038]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4" [disabled]
+                          - option "Day 5"
+                - generic [ref=f11e1039]:
+                  - generic "walk heuristic (1.1 km)" [ref=f11e1044]:
+                    - button "15 min walk" [ref=f11e1045] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1046] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6652%2C139.7263&destination=35.6653%2C139.7168&travelmode=walking
+                  - generic [ref=f11e1051]:
+                    - generic [ref=f11e1052]:
+                      - generic [ref=f11e1053]: 17:11–18:11
+                      - generic [aria-hidden] [ref=f11e1055]: "6"
+                    - generic [ref=f11e1056]:
+                      - button "Nezu Museum" [ref=f11e1057] [cursor=pointer]
+                      - generic [ref=f11e1058]:
+                        - button "Pin to position" [ref=f11e1059] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1063]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4" [disabled]
+                          - option "Day 5"
+                  - generic "urban transit heuristic (4.7 km)" [ref=f11e1068]:
+                    - button "32 min transit" [ref=f11e1069] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1070] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6653%2C139.7168&destination=35.6951%2C139.7018&travelmode=transit
+            - paragraph [ref=f11e1075]: "Return to Hotel Gracery Shinjuku: 31.6 min · slack 138 min · bases: Hotel Gracery Shinjuku → Hotel Gracery Shinjuku"
+          - generic [ref=f11e1076]:
+            - generic "Click to focus this day on the map" [ref=f11e1077] [cursor=pointer]:
+              - heading "Day 5 2026-09-11" [level=3] [ref=f11e1078]:
+                - generic [aria-hidden] [ref=f11e1079]: "5"
+                - text: Day 5
+                - generic [ref=f11e1080]: 2026-09-11
+              - generic [ref=f11e1081]:
+                - textbox "Edit day start time" [ref=f11e1082]: 09:00
+                - text: –
+                - textbox "Edit day end time" [ref=f11e1083]: 21:00
+              - button "Focus this day on the map" [ref=f11e1084]
+              - button "Hide this day on the map" [ref=f11e1088]
+              - button "Lock day" [ref=f11e1092]
+              - button "Day settings" [ref=f11e1096]
+            - generic [ref=f11e1100]:
+              - generic: Day End (21:00)
+              - generic [ref=f11e1101]:
+                - generic [ref=f11e1102]:
+                  - generic "regional rail heuristic (12.3 km)" [ref=f11e1107]:
+                    - button "45 min transit" [ref=f11e1108] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1109] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6951%2C139.7018&destination=35.6492%2C139.7897&travelmode=transit
+                  - generic [ref=f11e1114]:
+                    - generic [ref=f11e1115]:
+                      - generic [ref=f11e1116]: 09:45–11:45
+                      - generic [aria-hidden] [ref=f11e1118]: "1"
+                    - generic [ref=f11e1119]:
+                      - button "teamLab Planets TOKYO DMM" [ref=f11e1120] [cursor=pointer]
+                      - generic [ref=f11e1121]:
+                        - button "Pin to position" [ref=f11e1122] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1126]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5" [disabled]
+                - generic [ref=f11e1127]:
+                  - generic "urban transit heuristic (3.2 km)" [ref=f11e1132]:
+                    - button "26 min transit" [ref=f11e1133] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1134] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6492%2C139.7897&destination=35.6654%2C139.7707&travelmode=transit
+                  - generic [ref=f11e1139]:
+                    - generic [ref=f11e1140]:
+                      - generic [ref=f11e1141]: 12:11–13:41
+                      - generic [aria-hidden] [ref=f11e1143]: "2"
+                    - generic [ref=f11e1144]:
+                      - button "Tsukiji Outer Market" [ref=f11e1145] [cursor=pointer]
+                      - generic [ref=f11e1146]:
+                        - button "Pin to position" [ref=f11e1147] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1151]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5" [disabled]
+                - generic [ref=f11e1152]:
+                  - generic "walk heuristic (1.0 km)" [ref=f11e1157]:
+                    - button "13 min walk" [ref=f11e1158] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1159] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6654%2C139.7707&destination=35.6696%2C139.7641&travelmode=walking
+                  - generic [ref=f11e1164]:
+                    - generic [ref=f11e1165]:
+                      - generic [ref=f11e1166]: 13:54–14:54
+                      - generic [aria-hidden] [ref=f11e1168]: "3"
+                    - generic [ref=f11e1169]:
+                      - button "GINZA SIX" [ref=f11e1170] [cursor=pointer]
+                      - generic [ref=f11e1171]:
+                        - button "Pin to position" [ref=f11e1172] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1176]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5" [disabled]
+                - generic [ref=f11e1177]:
+                  - generic "walk heuristic (0.3 km)" [ref=f11e1182]:
+                    - button "4 min walk" [ref=f11e1183] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1184] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6696%2C139.7641&destination=35.6696%2C139.7616&travelmode=walking
+                  - generic [ref=f11e1189]:
+                    - generic [ref=f11e1190]:
+                      - generic [ref=f11e1191]: 14:58–15:43
+                      - generic [aria-hidden] [ref=f11e1193]: "4"
+                    - generic [ref=f11e1194]:
+                      - button "Cafe de L'ambre" [ref=f11e1195] [cursor=pointer]
+                      - generic [ref=f11e1196]:
+                        - button "Pin to position" [ref=f11e1197] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1201]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5" [disabled]
+                - generic [ref=f11e1202]:
+                  - generic "urban transit heuristic (1.8 km)" [ref=f11e1207]:
+                    - button "21 min transit" [ref=f11e1208] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1209] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6696%2C139.7616&destination=35.6812%2C139.7671&travelmode=transit
+                  - generic [ref=f11e1214]:
+                    - generic [ref=f11e1215]:
+                      - generic [ref=f11e1216]: 16:04–16:34
+                      - generic [aria-hidden] [ref=f11e1218]: "5"
+                    - generic [ref=f11e1219]:
+                      - button "Tokyo Station" [ref=f11e1220] [cursor=pointer]
+                      - generic [ref=f11e1221]:
+                        - button "Pin to position" [ref=f11e1222] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1226]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5" [disabled]
+                - generic [ref=f11e1227]:
+                  - generic "urban transit heuristic (2.1 km)" [ref=f11e1232]:
+                    - button "22 min transit" [ref=f11e1233] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1234] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6812%2C139.7671&destination=35.6946%2C139.7601&travelmode=transit
+                  - generic [ref=f11e1239]:
+                    - generic [ref=f11e1240]:
+                      - generic [ref=f11e1241]: 16:56–17:41
+                      - generic [aria-hidden] [ref=f11e1243]: "6"
+                    - generic [ref=f11e1244]:
+                      - button "GLITCH COFFEE & ROASTERS" [ref=f11e1245] [cursor=pointer]
+                      - generic [ref=f11e1246]:
+                        - button "Pin to position" [ref=f11e1247] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1251]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5" [disabled]
+                - generic [ref=f11e1252]:
+                  - generic "walk heuristic (1.4 km)" [ref=f11e1257]:
+                    - button "19 min walk" [ref=f11e1258] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1259] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.6946%2C139.7601&destination=35.702%2C139.7679&travelmode=walking
+                  - generic [ref=f11e1264]:
+                    - generic [ref=f11e1265]:
+                      - generic [ref=f11e1266]: 18:00–18:45
+                      - generic [aria-hidden] [ref=f11e1268]: "7"
+                    - generic [ref=f11e1269]:
+                      - button "Kanda Myoujin Shrine" [ref=f11e1270] [cursor=pointer]
+                      - generic [ref=f11e1271]:
+                        - button "Pin to position" [ref=f11e1272] [cursor=pointer]
+                        - combobox "Move to day" [ref=f11e1276]:
+                          - option "Move to…" [selected]
+                          - option "Day 1"
+                          - option "Day 2"
+                          - option "Day 3"
+                          - option "Day 4"
+                          - option "Day 5" [disabled]
+                  - generic "regional rail heuristic (7.8 km)" [ref=f11e1281]:
+                    - button "41 min transit" [ref=f11e1282] [cursor=pointer]
+                    - link "Open this leg in Google Maps" [ref=f11e1283] [cursor=pointer]:
+                      - /url: https://www.google.com/maps/dir/?api=1&origin=35.702%2C139.7679&destination=35.6951%2C139.7018&travelmode=transit
+            - paragraph [ref=f11e1288]: "Return to Hotel Gracery Shinjuku: 41.2 min · slack 94 min · bases: Hotel Gracery Shinjuku → Hotel Gracery Shinjuku"
+          - paragraph [ref=f11e1289]: Everything fits — no places left unscheduled.

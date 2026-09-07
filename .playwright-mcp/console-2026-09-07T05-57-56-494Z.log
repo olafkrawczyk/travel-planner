@@ -1,0 +1,3 @@
+[      71ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5174/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550
+[    6039ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/878a4009-77a3-4d56-86f5-842924c59dc2:2460
+[    6040ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/878a4009-77a3-4d56-86f5-842924c59dc2:2460

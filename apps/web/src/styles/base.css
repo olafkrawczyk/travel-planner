@@ -4,18 +4,29 @@ body {
   margin: 0; 
   background: var(--bg-app); 
   color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-size: var(--text-base);
 }
 h1 { font-size: var(--text-2xl); }
 h2 { font-size: var(--text-xl); }
 h3 { font-size: var(--text-lg); }
+h1, h2, h3 { letter-spacing: -0.011em; font-weight: 600; }
+
+/* Global visible focus style — ink outline, no accent hue involved. */
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
 
 /* Common Layout */
 .row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .row.end { justify-content: flex-end; align-items: center; }
 .spacer { flex: 1; }
 .hint { color: var(--text-muted); font-size: var(--text-sm); }
+
+/* Numeric utilities for tabular/monospace figures (schedules, clocks). */
+.tnum { font-variant-numeric: tabular-nums; }
+.clock { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* Accessibility: visually hidden but still readable by screen readers (used
  * by the app's aria-live status regions — see LiveRegion.tsx). Standard

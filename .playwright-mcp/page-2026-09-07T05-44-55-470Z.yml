@@ -1,0 +1,44 @@
+- generic [ref=f3e2]:
+  - generic [ref=f3e3]: Itinerary updated
+  - generic [ref=f3e1258]:
+    - heading "Travel Planner" [level=1] [ref=f3e1259]
+    - generic [ref=f3e1260]:
+      - generic [ref=f3e1261]:
+        - heading "New trip" [level=2] [ref=f3e1262]
+        - generic [ref=f3e1263]:
+          - text: Name
+          - textbox "Name" [ref=f3e1264]:
+            - /placeholder: Tokyo 2026
+        - generic [ref=f3e1265]:
+          - text: Starting city
+          - textbox "Starting city" [ref=f3e1266]:
+            - /placeholder: e.g. Tokyo — seeds the home base location
+        - generic [ref=f3e1267]:
+          - generic [ref=f3e1268]:
+            - text: From
+            - textbox "From" [ref=f3e1269]: 2026-09-07
+          - generic [ref=f3e1270]:
+            - text: To
+            - textbox "To" [ref=f3e1271]: 2026-09-11
+        - button "Create trip" [ref=f3e1272] [cursor=pointer]
+        - paragraph [ref=f3e1273]: One day is generated per date with default 09:00–21:00 hours; the starting city becomes the home base location. Trips are capped at 60 days.
+      - generic [ref=f3e1274]:
+        - heading "Your trips" [level=2] [ref=f3e1275]
+        - list [ref=f3e1276]:
+          - listitem [ref=f3e1277]:
+            - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f3e1278] [cursor=pointer]:
+              - strong [ref=f3e1279]: Tokyo & Lake Kawaguchi 5-Day
+              - generic [ref=f3e1280]: 5 days, 33 places, updated 07/09/2026
+            - generic [ref=f3e1281]:
+              - button "Share" [ref=f3e1282] [cursor=pointer]
+              - button "Export" [ref=f3e1283] [cursor=pointer]
+              - button "Really delete?" [active] [ref=f3e1294] [cursor=pointer]
+    - generic [ref=f3e1285]:
+      - button "Import trip JSON…" [ref=f3e1286] [cursor=pointer]
+      - 'button "Load sample: Tokyo & Fuji (5D)" [ref=f3e1287] [cursor=pointer]'
+      - 'button "Load sample: Iceland Ring (12D)" [ref=f3e1288] [cursor=pointer]'
+      - 'button "Load sample: Tokyo" [ref=f3e1289] [cursor=pointer]'
+      - 'button "Load sample: Warsaw" [ref=f3e1290] [cursor=pointer]'
+      - 'button "Load sample: Tokyo & Hakone" [ref=f3e1291] [cursor=pointer]'
+      - 'button "Load sample: Tokyo (100 places)" [ref=f3e1292] [cursor=pointer]'
+      - 'button "Load sample: Tokyo (custom)" [ref=f3e1293] [cursor=pointer]'

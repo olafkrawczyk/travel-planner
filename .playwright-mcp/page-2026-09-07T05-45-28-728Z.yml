@@ -1,0 +1,42 @@
+- generic [ref=f4e5]:
+  - heading "Travel Planner" [level=1] [ref=f4e6]
+  - generic [ref=f4e7]:
+    - generic [ref=f4e8]:
+      - heading "New trip" [level=2] [ref=f4e9]
+      - generic [ref=f4e10]:
+        - text: Name
+        - textbox "Name" [ref=f4e11]:
+          - /placeholder: Tokyo 2026
+      - generic [ref=f4e12]:
+        - text: Starting city
+        - textbox "Starting city" [ref=f4e13]:
+          - /placeholder: e.g. Tokyo — seeds the home base location
+      - generic [ref=f4e14]:
+        - generic [ref=f4e15]:
+          - text: From
+          - textbox "From" [ref=f4e16]: 2026-09-07
+        - generic [ref=f4e17]:
+          - text: To
+          - textbox "To" [ref=f4e18]: 2026-09-11
+      - button "Create trip" [ref=f4e19] [cursor=pointer]
+      - paragraph [ref=f4e20]: One day is generated per date with default 09:00–21:00 hours; the starting city becomes the home base location. Trips are capped at 60 days.
+    - generic [ref=f4e21]:
+      - heading "Your trips" [level=2] [ref=f4e22]
+      - list [ref=f4e23]:
+        - listitem [ref=f4e24]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f4e25] [cursor=pointer]:
+            - strong [ref=f4e26]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f4e27]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f4e28]:
+            - button "Share" [ref=f4e29] [cursor=pointer]
+            - button "Export" [ref=f4e30] [cursor=pointer]
+            - button "Delete" [ref=f4e31] [cursor=pointer]
+  - generic [ref=f4e32]:
+    - button "Import trip JSON…" [ref=f4e33] [cursor=pointer]
+    - 'button "Load sample: Tokyo & Fuji (5D)" [ref=f4e34] [cursor=pointer]'
+    - 'button "Load sample: Iceland Ring (12D)" [ref=f4e35] [cursor=pointer]'
+    - 'button "Load sample: Tokyo" [ref=f4e36] [cursor=pointer]'
+    - 'button "Load sample: Warsaw" [ref=f4e37] [cursor=pointer]'
+    - 'button "Load sample: Tokyo & Hakone" [ref=f4e38] [cursor=pointer]'
+    - 'button "Load sample: Tokyo (100 places)" [ref=f4e39] [cursor=pointer]'
+    - 'button "Load sample: Tokyo (custom)" [ref=f4e40] [cursor=pointer]'

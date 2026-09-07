@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import type { DayPlan, Itinerary, Place, TravelOverride } from "@app/domain";
 import { useStore, dayColor } from "../store";
 import { UnscheduledTray } from "./UnscheduledTray";
@@ -29,11 +29,17 @@ function duration(start: string, end: string) {
  * positioned from the same floored heights (see `layoutDayTrack`) plus the
  * day's slack, so an overrun stays visible instead of being masked by
  * floor-inflation earlier in the day.
+ *
+ * The floors below reflect the timetable layout: each stop's gutter holds
+ * one line of clock time plus a marker on the day's spine, and its body
+ * holds the (now larger, "read first") place name — so MIN_STOP_PX has
+ * room for both without crowding. Leg/wait floors hold one quiet line of
+ * supporting text next to the same spine.
  */
 const MINUTE_PX = 0.5;
-const MIN_STOP_PX = 40; // number badge + name + times + pin/move in one row
-const MIN_LEG_PX = 28; // one line: "12 min walk", source badge, GMaps link
-const MIN_WAIT_PX = 24; // a single "wait N min" badge
+const MIN_STOP_PX = 44; // gutter: clock time + marker; body: place name (+ controls on hover)
+const MIN_LEG_PX = 32; // one quiet connector line: duration, mode, source badge, map icon
+const MIN_WAIT_PX = 26; // a single "wait N min" badge
 
 function blockPx(minutes: number, floor: number): number {
   return Math.max(minutes * MINUTE_PX, floor);
@@ -75,14 +81,107 @@ function gmapsLink(from: Place | undefined, to: Place | undefined, mode: string)
   url.searchParams.set("api", "1");
   url.searchParams.set("origin", `${from.lat},${from.lng}`);
   url.searchParams.set("destination", `${to.lat},${to.lng}`);
-  
+
   let gmode = "transit";
   if (mode === "walk") gmode = "walking";
   if (mode === "car") gmode = "driving";
-  
+
   url.searchParams.set("travelmode", gmode);
   return url.toString();
 }
+
+/**
+ * Icons: inline SVG only (no emoji), 16px, currentColor stroke at 1.5 —
+ * matches the house style ban on emoji-as-icon. Every button that renders
+ * only one of these still carries its own aria-label/title; the icon
+ * itself stays aria-hidden.
+ */
+function Icon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+const TargetIcon = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="7" />
+    <circle cx="12" cy="12" r="2.25" />
+    <line x1="12" y1="2" x2="12" y2="5" />
+    <line x1="12" y1="19" x2="12" y2="22" />
+    <line x1="2" y1="12" x2="5" y2="12" />
+    <line x1="19" y1="12" x2="22" y2="12" />
+  </Icon>
+);
+
+const EyeIcon = () => (
+  <Icon>
+    <path d="M2 12S5.5 5 12 5s10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </Icon>
+);
+
+const EyeOffIcon = () => (
+  <Icon>
+    <path d="M3 3l18 18" />
+    <path d="M10.6 5.2C11.05 5.07 11.51 5 12 5c6.5 0 10 7 10 7a17.9 17.9 0 0 1-4.1 4.9" />
+    <path d="M6.5 6.6C4 8.3 2 12 2 12s3.5 7 10 7c1.3 0 2.47-.27 3.5-.7" />
+    <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+  </Icon>
+);
+
+const LockIcon = () => (
+  <Icon>
+    <rect x="5" y="11" width="14" height="9" rx="1.5" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </Icon>
+);
+
+const UnlockIcon = () => (
+  <Icon>
+    <rect x="5" y="11" width="14" height="9" rx="1.5" />
+    <path d="M8 11V8a4 4 0 0 1 7.5-2" />
+  </Icon>
+);
+
+const SettingsIcon = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 13.5a7.97 7.97 0 0 0 0-3l2-1.4-2-3.4-2.3.8a8 8 0 0 0-2.6-1.5L16 2h-4l-.4 2.5a8 8 0 0 0-2.6 1.5l-2.3-.8-2 3.4 2 1.4a7.97 7.97 0 0 0 0 3l-2 1.4 2 3.4 2.3-.8a8 8 0 0 0 2.6 1.5L12 22h4l.4-2.5a8 8 0 0 0 2.6-1.5l2.3.8 2-3.4-2-1.4Z" />
+  </Icon>
+);
+
+const PinIcon = () => (
+  <Icon>
+    <path d="M12 21s-6.5-5.7-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.3-6.5 11-6.5 11Z" />
+    <circle cx="12" cy="10" r="2.25" />
+  </Icon>
+);
+
+const ExternalLinkIcon = () => (
+  <Icon>
+    <path d="M14 4h6v6" />
+    <path d="M20 4l-9 9" />
+    <path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" />
+  </Icon>
+);
+
+const CheckIcon = () => (
+  <Icon>
+    <path d="M4 12l5 5L20 6" />
+  </Icon>
+);
 
 /**
  * Timeline: per-day sections with stops and legs, unscheduled tray,
@@ -175,12 +274,13 @@ function DaySection(props: {
   const focusDay = useStore((s) => s.focusDay);
   const regenerate = useStore((s) => s.regenerate);
   const solving = useStore((s) => s.solving);
-  
+
   const day = trip.days[dayIndex]!;
   const places = trip.places;
   const baseStart = placeOf(places, props.baseStartId);
   const baseEnd = placeOf(places, props.baseEndId);
   const track = plan && plan.stops.length > 0 ? layoutDayTrack(plan) : null;
+  const dayHidden = hiddenDays.has(day.id);
 
   return (
     <section
@@ -237,7 +337,7 @@ function DaySection(props: {
           />
         </span>
         {plan && plan.slackMin < 0 && (
-          <span className="badge badge-danger" title="This day exceeds its end time (e.g. after a force-insert)">
+          <span className="badge badge-danger tnum" title="This day exceeds its end time (e.g. after a force-insert)">
             ⚠ over by {-plan.slackMin} min
           </span>
         )}
@@ -245,26 +345,31 @@ function DaySection(props: {
         <button
           className="icon-btn"
           title="Focus this day (hides all other days on the map)"
+          aria-label="Focus this day on the map"
           onClick={(e) => {
             e.stopPropagation();
             isolateDay(day.id);
           }}
         >
-          🎯
+          <TargetIcon />
         </button>
         <button
-          className={"icon-btn" + (hiddenDays.has(day.id) ? " active" : "")}
-          title={hiddenDays.has(day.id) ? "Show this day on the map" : "Hide this day on the map"}
+          className={"icon-btn" + (dayHidden ? " active" : "")}
+          title={dayHidden ? "Show this day on the map" : "Hide this day on the map"}
+          aria-label={dayHidden ? "Show this day on the map" : "Hide this day on the map"}
+          aria-pressed={dayHidden}
           onClick={(e) => {
             e.stopPropagation();
             toggleDayHidden(day.id);
           }}
         >
-          {hiddenDays.has(day.id) ? "🚫" : "👁"}
+          {dayHidden ? <EyeOffIcon /> : <EyeIcon />}
         </button>
         <button
           className={"icon-btn" + (props.locked ? " active" : "")}
           title={props.locked ? "Unlock day" : "Lock day (re-solves leave it unchanged)"}
+          aria-label={props.locked ? "Unlock day" : "Lock day"}
+          aria-pressed={props.locked}
           onClick={(e) => {
             e.stopPropagation();
             mutateTrip((draft) => {
@@ -272,17 +377,19 @@ function DaySection(props: {
             });
           }}
         >
-          {props.locked ? "🔒" : "🔓"}
+          {props.locked ? <LockIcon /> : <UnlockIcon />}
         </button>
         <button
           className="icon-btn"
           title="Day settings"
+          aria-label="Day settings"
+          aria-expanded={settingsOpen}
           onClick={(e) => {
             e.stopPropagation();
             setSettingsOpen(!settingsOpen);
           }}
         >
-          ⚙
+          <SettingsIcon />
         </button>
       </header>
 
@@ -340,23 +447,34 @@ function DaySection(props: {
               const legIn = plan.legs[i];
               const legOut = plan.legs[i + 1];
               const row = track!.rows[i]!;
+              const isLast = i === plan.stops.length - 1;
 
               return (
                 <div key={stop.placeId} className="track-group">
                   {legIn && (
-                    <div className="track-leg" style={{ height: `${row.legInPx}px` }}>
-                      <div className="track-leg-content">
+                    <div className="track-row track-leg" style={{ height: `${row.legInPx}px` }}>
+                      <div className="track-gutter" aria-hidden="true">
+                        <span className="track-time-range" />
+                        <span className="track-spine-col" />
+                      </div>
+                      <div className="track-row-body">
                         <LegRow leg={legIn} places={places} onOverride={handleOverride} />
                       </div>
                     </div>
                   )}
                   {stop.waitMin > 0 && (
-                    <div className="track-wait" style={{ height: `${row.waitPx}px` }}>
-                      <span className="badge badge-warning">wait {stop.waitMin} min</span>
+                    <div className="track-row track-wait" style={{ height: `${row.waitPx}px` }}>
+                      <div className="track-gutter" aria-hidden="true">
+                        <span className="track-time-range" />
+                        <span className="track-spine-col" />
+                      </div>
+                      <div className="track-row-body">
+                        <span className="badge badge-warning tnum">wait {stop.waitMin} min</span>
+                      </div>
                     </div>
                   )}
                   <div
-                    className={"track-stop" + (hoveredPlaceId === stop.placeId ? " hovered" : "")}
+                    className={"track-row track-stop" + (hoveredPlaceId === stop.placeId ? " hovered" : "")}
                     style={{ height: `${row.stopPx}px` }}
                     draggable
                     onDragStart={(e) => {
@@ -366,8 +484,15 @@ function DaySection(props: {
                     onMouseEnter={() => setHovered(stop.placeId)}
                     onMouseLeave={() => setHovered(null)}
                   >
-                    <div className="track-stop-content">
-                      <span className="stop-number">{i + 1}</span>
+                    <div className="track-gutter">
+                      <span className="track-time-range clock">
+                        {stop.arrive}–{stop.depart}
+                      </span>
+                      <span className="track-spine-col">
+                        <span className="track-marker" aria-hidden="true">{i + 1}</span>
+                      </span>
+                    </div>
+                    <div className="track-row-body track-stop-body">
                       <button
                         className="stop-name"
                         onClick={() => openPlaceEditor(stop.placeId)}
@@ -375,17 +500,20 @@ function DaySection(props: {
                       >
                         {place?.name ?? stop.placeId}
                       </button>
-                      <span className="stop-times">
-                        {stop.arrive}–{stop.depart}
-                      </span>
                       <span className="spacer" />
-                      <PinToggle placeId={stop.placeId} dayIndex={dayIndex} />
-                      <MoveMenu placeId={stop.placeId} currentDayIndex={dayIndex} />
+                      <div className="track-stop-controls">
+                        <PinToggle placeId={stop.placeId} dayIndex={dayIndex} />
+                        <MoveMenu placeId={stop.placeId} currentDayIndex={dayIndex} />
+                      </div>
                     </div>
                   </div>
-                  {legOut && i === plan.stops.length - 1 && (
-                    <div className="track-leg" style={{ height: `${row.legOutPx}px` }}>
-                      <div className="track-leg-content">
+                  {legOut && isLast && (
+                    <div className="track-row track-leg" style={{ height: `${row.legOutPx}px` }}>
+                      <div className="track-gutter" aria-hidden="true">
+                        <span className="track-time-range" />
+                        <span className="track-spine-col" />
+                      </div>
+                      <div className="track-row-body">
                         <LegRow leg={legOut} places={places} onOverride={handleOverride} />
                       </div>
                     </div>
@@ -398,7 +526,7 @@ function DaySection(props: {
       )}
 
       {plan && plan.stops.length > 0 && (
-        <p className="day-footnote hint">
+        <p className="day-footnote hint tnum">
           Return to {baseEnd?.name ?? "base"}: {plan.legs[plan.legs.length - 1]?.minutes ?? 0} min · slack{" "}
           {plan.slackMin} min
           {baseStart && baseEnd && ` · bases: ${baseStart.name} → ${baseEnd.name}`}
@@ -461,15 +589,18 @@ function DaySettings({ dayIndex }: { dayIndex: number }) {
         />
       </label>
       <p className="hint day-bases-info">
-        🛏 {baseStart?.name ?? "?"}
-        {baseEnd && baseEnd.id !== baseStart?.id ? ` → 🛏 ${baseEnd.name}` : ""}
+        Base: {baseStart?.name ?? "?"}
+        {baseEnd && baseEnd.id !== baseStart?.id ? ` → ${baseEnd.name}` : ""}
         {" · edit in Stays"}
       </p>
     </div>
   );
 }
 
-/** Inline leg row: minutes, mode, source badge, explanation tooltip, override edit, Google Maps link. */
+/** Quiet connector row: minutes, mode, source badge (only when it's worth
+ *  saying — an estimated time is the default and stays unmarked), the full
+ *  explanation as a tooltip, override edit, and a Google Maps icon-link
+ *  revealed on hover/focus. */
 function LegRow({
   leg,
   places,
@@ -483,6 +614,11 @@ function LegRow({
   const [value, setValue] = useState(String(Math.round(leg.minutes)));
   const from = placeOf(places, leg.fromId);
   const to = placeOf(places, leg.toId);
+  // "heuristic" is the unremarkable default (an estimate) and needs no
+  // badge; only a live API lookup or a user's own override are worth
+  // calling out, and in plain language rather than the internal source
+  // vocabulary.
+  const sourceLabel = leg.source === "override" ? "Edited" : leg.source === "api" ? "Live" : null;
 
   return (
     <div className="leg-row" title={leg.explanation ?? `${leg.mode} ${leg.minutes} min`}>
@@ -505,22 +641,27 @@ function LegRow({
             onBlur={() => setEditing(false)}
           />
           min
-          <button type="submit">✓</button>
+          <button type="submit" className="icon-btn leg-edit-submit" aria-label="Save travel time" title="Save travel time">
+            <CheckIcon />
+          </button>
         </form>
       ) : (
-        <button className="leg-minutes" title="Click to override travel time" onClick={() => setEditing(true)}>
+        <button className="leg-minutes tnum" title="Click to override travel time" onClick={() => setEditing(true)}>
           {Math.round(leg.minutes)} min {leg.mode}
         </button>
       )}
-      <span className={"badge " + (leg.source === "override" ? "badge-success" : leg.source === "api" ? "badge-info" : "")}>{leg.source}</span>
+      {sourceLabel && (
+        <span className={"badge " + (leg.source === "override" ? "badge-success" : "badge-info")}>{sourceLabel}</span>
+      )}
       <a
-        className="gmaps-link"
+        className="leg-gmaps-link"
         href={gmapsLink(from, to, leg.mode)}
         target="_blank"
         rel="noreferrer"
-        title="Check in Google Maps"
+        aria-label="Open this leg in Google Maps"
+        title="Open this leg in Google Maps"
       >
-        GMaps ↗
+        <ExternalLinkIcon />
       </a>
     </div>
   );
@@ -534,6 +675,8 @@ function PinToggle({ placeId, dayIndex }: { placeId: string; dayIndex: number })
     <button
       className={"icon-btn" + (pinned ? " active" : "")}
       title={pinned ? "Unpin position" : "Pin to position (keeps its relative order on re-solve)"}
+      aria-label={pinned ? "Unpin position" : "Pin to position"}
+      aria-pressed={pinned}
       onClick={() =>
         mutateTrip((draft) => {
           const day = draft.days[dayIndex]!;
@@ -544,7 +687,7 @@ function PinToggle({ placeId, dayIndex }: { placeId: string; dayIndex: number })
         })
       }
     >
-      📌
+      <PinIcon />
     </button>
   );
 }
@@ -559,6 +702,7 @@ function MoveMenu({ placeId, currentDayIndex }: { placeId: string; currentDayInd
       className="move-menu"
       value=""
       title="Move to day"
+      aria-label="Move to day"
       onChange={(e) => {
         const dayId = e.target.value;
         if (dayId) mutateTrip(() => {}, { type: "dragToDay", placeId, dayId });
@@ -573,4 +717,3 @@ function MoveMenu({ placeId, currentDayIndex }: { placeId: string; currentDayInd
     </select>
   );
 }
-

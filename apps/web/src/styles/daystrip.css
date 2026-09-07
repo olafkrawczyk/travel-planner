@@ -1,26 +1,70 @@
 /**
  * Trip overview day strip (see DayStrip.tsx). Sits between the trip header
  * and the split view, so it's naturally "pinned" — it isn't inside anything
- * that scrolls vertically. At 12+ days it scrolls horizontally instead of
- * shrinking tiles below a readable size (`min-width` below is the floor).
+ * that scrolls vertically.
+ *
+ * Read as a route diagram: `.day-strip` is the horizontally-scrolling
+ * viewport (its own scroll container, so this never becomes page-level
+ * horizontal scroll) and `.day-strip-track` is the actual line — a hairline
+ * drawn once behind every badge (`::before`), sized to the track's own
+ * (content-driven) width so it always reaches every day, on-screen or not.
+ * Each day's badge is the coloured "station" sitting on that line, in the
+ * same --day-N hue used for that day's map markers and schedule rule
+ * elsewhere in the app.
  */
 .day-strip {
-  display: flex;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  /* Never let this component push the page itself wider — the scrolling
+   * happens in here, not in the body. */
+  min-width: 0;
+  max-width: 100%;
+}
+
+.day-strip-track {
+  position: relative;
+  display: flex;
+  gap: var(--space-2);
+  /* Shrink to fit its items rather than stretching to fill the scroller, so
+   * the connecting line below (sized to 100% of this element) ends exactly
+   * at the last day and never overshoots into empty space. */
+  width: max-content;
+}
+
+/* The route line. Positioned at the vertical centre of a badge (item's own
+ * top padding + half the badge's height) and spanning the track's full
+ * width — not stitched per item — so it is correct for any number of days
+ * without per-item geometry. Sits at z-index 0; each badge is raised to sit
+ * visibly on top of it (see `.day-number-badge` below), so the line reads as
+ * feeding into each station and disappearing behind the rest as a hairline,
+ * not colour. */
+.day-strip-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--space-1) + var(--space-5) / 2 - 1px);
+  height: 2px;
+  background: var(--border-strong);
+  z-index: 0;
 }
 
 .day-strip-item {
+  position: relative;
+  z-index: 1;
   flex: 1 1 76px;
   min-width: 76px;
   max-width: 128px;
+  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  background: none;
+  background: var(--bg-surface);
   border: 1px solid transparent;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
@@ -47,12 +91,18 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  position: relative;
+  z-index: 1;
 }
 
 /* Reuses the exact badge look Timeline uses for its per-day identity marker
  * (same class, same --day-accent contract via dayColor()) so a day reads as
- * the same object in the strip as it does in the timeline and on the map. */
+ * the same object in the strip as it does in the timeline and on the map.
+ * Raised above the route line (see `.day-strip-track::before`) so the line
+ * visibly runs into a solid, opaque "station" rather than through it. */
 .day-strip-top .day-number-badge {
+  position: relative;
+  z-index: 1;
   width: var(--space-5);
   height: var(--space-5);
   min-width: var(--space-5);
@@ -67,15 +117,30 @@
   text-overflow: ellipsis;
 }
 
+.day-isolate-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.day-strip-bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 /* The load bar: committed time (DayPlan.slackMin vs the day's own
  * start–end window) as a fraction of that window. Deliberately a neutral
  * accent fill for the normal case — the 12 day-identity hues stay reserved
- * for *identity* (badge, left rule, map markers); reusing them here would
+ * for *identity* (badge, route line, map markers); reusing them here would
  * make a fuller day look "more categorically day-7" instead of "more full",
  * and would fight with the danger/warning states below on whichever day
  * happens to land on a red- or amber-ish hue. */
 .day-strip-bar {
   display: block;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 5px;
   border-radius: var(--radius-full);
   background: var(--border);
@@ -93,6 +158,8 @@
 .day-strip-status {
   font-size: var(--text-xs);
   color: var(--text-muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 /*

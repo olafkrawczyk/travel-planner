@@ -9,15 +9,47 @@ import { ErrorBoundary, CrashFallbackShell, type CrashFallbackProps } from "./Er
 /**
  * Required attribution (release audit BLOCKER #1). OpenFreeMap's usage
  * policy requires the credit "OpenFreeMap © OpenMapTiles Data from
- * OpenStreetMap" verbatim; it says this is added automatically with
- * MapLibre, but that only happens when the style JSON's sources carry an
- * `attribution` field — fetching the Liberty style directly shows its
- * `openmaptiles`/`ne2_shaded` sources do NOT, so nothing here is automatic.
- * All three attributions below are therefore explicit `customAttribution`,
- * alongside the pre-existing OSM/Photon credits this string already carried.
+ * OpenStreetMap" verbatim, alongside the pre-existing OSM/Photon credits this
+ * string already carried. This used to be passed to MapLibre's built-in
+ * `AttributionControl` as `customAttribution`, but that control *merges*
+ * `customAttribution` with any `attribution` strings it finds on the style's
+ * own sources — and only de-dupes by exact string match, not substring. The
+ * Liberty style's sources apparently carry a short attribution string that
+ * prefix-overlaps this one, so the built-in control rendered both
+ * concatenated: a visibly duplicated credit line. To guarantee the credit
+ * renders exactly once with exactly this content, map creation below
+ * disables the built-in control (`attributionControl: false`) and adds the
+ * small custom `IControl` defined at `createAttributionControl` instead,
+ * which just drops this HTML into a `div` with no merge/dedupe logic at all.
  */
 const OSM_ATTR =
   '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors · <a href="https://photon.komoot.io" target="_blank">geocoding by Photon</a> contributors';
+
+/** Minimal custom map control that renders `OSM_ATTR` verbatim, once — see
+ *  the doc comment on `OSM_ATTR` above for why this exists instead of
+ *  `maplibregl.AttributionControl`. Follows the same `onAdd`/`onRemove`
+ *  shape MapLibre's own controls use (`maplibregl-ctrl` is its base class
+ *  for control chrome; `map-attribution` carries this file's own styling).
+ *  `elRef` is populated with the control's own element so the component can
+ *  later measure/reposition it (see the dynamic bottom-offset effect below,
+ *  which keeps it clear of the mobile bottom-sheet timeline). */
+function createAttributionControl(elRef: { current: HTMLDivElement | null }): maplibregl.IControl {
+  let container: HTMLDivElement | null = null;
+  return {
+    onAdd() {
+      container = document.createElement("div");
+      container.className = "maplibregl-ctrl map-attribution";
+      container.innerHTML = OSM_ATTR;
+      elRef.current = container;
+      return container;
+    },
+    onRemove() {
+      container?.remove();
+      container = null;
+      elRef.current = null;
+    },
+  };
+}
 
 /** Small glyph shown as a secondary corner badge on non-hotel markers, so
  *  category survives as information without a second competing colour
@@ -99,6 +131,45 @@ function markersFor(trip: Trip, itinerary: Itinerary | null, showBases: boolean)
   });
 }
 
+/** Turn a straight path through `coords` into a gently arced one: each
+ *  consecutive pair of points becomes a quadratic-Bezier arc that bulges a
+ *  modest fraction of the segment's length away from its midpoint (sides
+ *  alternate per segment, so a day's route reads as a gentle wave rather
+ *  than a straight-line "star" pattern radiating from a shared hub). The
+ *  arc still passes through every real coordinate exactly — only the
+ *  in-between geometry is curved — which is enough to visually separate
+ *  crossing day routes without attempting real road geometry (out of
+ *  scope). */
+function curveThroughPoints(coords: [number, number][]): [number, number][] {
+  if (coords.length < 2) return coords;
+  const OFFSET_FRACTION = 0.1;
+  const STEPS_PER_SEGMENT = 14;
+  const result: [number, number][] = [coords[0]!];
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [x0, y0] = coords[i]!;
+    const [x1, y1] = coords[i + 1]!;
+    const midX = (x0 + x1) / 2;
+    const midY = (y0 + y1) / 2;
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len = Math.hypot(dx, dy);
+    const side = i % 2 === 0 ? 1 : -1;
+    // Unit vector perpendicular to the segment, flipped every other segment.
+    const perpX = len === 0 ? 0 : (-dy / len) * side;
+    const perpY = len === 0 ? 0 : (dx / len) * side;
+    const controlX = midX + perpX * len * OFFSET_FRACTION;
+    const controlY = midY + perpY * len * OFFSET_FRACTION;
+    for (let s = 1; s <= STEPS_PER_SEGMENT; s++) {
+      const t = s / STEPS_PER_SEGMENT;
+      const inv = 1 - t;
+      const x = inv * inv * x0 + 2 * inv * t * controlX + t * t * x1;
+      const y = inv * inv * y0 + 2 * inv * t * controlY + t * t * y1;
+      result.push([x, y]);
+    }
+  }
+  return result;
+}
+
 /** GeoJSON line per solved day: base start → ordered stops → base end, in the
  *  day's colour. The colour is resolved to a concrete value here (GeoJSON
  *  feature properties are plain data — MapLibre's `["get", "color"]` paint
@@ -125,7 +196,7 @@ function routeFeatures(
     features.push({
       type: "Feature",
       properties: { dayId: plan.dayId, color: resolveCssColor(dayColor(dayIndex)) },
-      geometry: { type: "LineString", coordinates },
+      geometry: { type: "LineString", coordinates: curveThroughPoints(coordinates) },
     });
   });
   return { type: "FeatureCollection", features };
@@ -141,6 +212,41 @@ function baseCenter(trip: Trip | null): [number, number] {
   const place =
     (baseId ? byId?.get(baseId) : undefined) ?? trip?.places[0];
   return place ? [place.lng, place.lat] : [139.7671, 35.6812];
+}
+
+/** Bounds enclosing every place in the trip, for framing the whole trip on
+ *  load and on trip change (release audit: initial view used to be just the
+ *  hotel at a fixed zoom, which put far-flung stops off-screen). Returns
+ *  `null` when the trip has no places yet — `fitBounds` needs at least one
+ *  coordinate — so callers fall back to `baseCenter` + a fixed zoom instead.
+ *  Reuses the same `coordinates.reduce(...)` pattern the focusDayId effect
+ *  below uses to build a single day's bounds. */
+function tripBounds(trip: Trip | null): maplibregl.LngLatBounds | null {
+  const coordinates: [number, number][] = (trip?.places ?? []).map((p) => [p.lng, p.lat]);
+  if (coordinates.length === 0) return null;
+  return coordinates.reduce(
+    (b, c) => b.extend(c),
+    new maplibregl.LngLatBounds(coordinates[0]!, coordinates[0]!),
+  );
+}
+
+/** Padding for `fitBounds` calls that frame the whole trip. Desktop keeps
+ *  generous, roughly even padding for breathing room around floating
+ *  controls (search box, hotel toggle, nav control, attribution strip) — the
+ *  timeline panel itself is a separate CSS grid column outside the map's own
+ *  container, so fitBounds computed against the map canvas already excludes
+ *  it without extra right-padding. On mobile the timeline instead becomes a
+ *  bottom-sheet overlay covering roughly the bottom half of the map, so
+ *  bottom padding is computed from the container's own current height (not
+ *  cached — viewport/container size can differ between calls) to keep the
+ *  fitted bounds in the visible top portion above the sheet. */
+function fitBoundsPadding(containerEl: HTMLElement | null): maplibregl.PaddingOptions {
+  const isMobile = window.matchMedia("(max-width: 820px)").matches;
+  if (isMobile) {
+    const bottom = Math.round((containerEl?.clientHeight ?? 0) * 0.48);
+    return { top: 70, bottom: bottom || 200, left: 60, right: 60 };
+  }
+  return { top: 70, bottom: 70, left: 60, right: 90 };
 }
 
 /**
@@ -185,6 +291,10 @@ function MapViewInner() {
    *  nodes instead of the marker-rebuild effect tearing them all down and
    *  recreating them on every hover (P0 #4). */
   const elByPlaceId = useRef<Map<string, HTMLElement>>(new Map());
+  /** The custom attribution control's own element (see
+   *  `createAttributionControl`), kept so the effect below can measure the
+   *  map/timeline-sheet layout and push it up clear of the sheet on mobile. */
+  const attributionElRef = useRef<HTMLDivElement | null>(null);
 
   /** Right-click context menu state; mirrored in a ref so map event handlers see the latest value. */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; lat: number; lng: number } | null>(
@@ -219,16 +329,13 @@ function MapViewInner() {
       zoom: 11,
       attributionControl: false,
     });
-    // `compact: false` forces the control to stay expanded at every viewport
-    // width. MapLibre's default (`compact` unset) auto-collapses to an
-    // unlabelled "i" button on any map narrower than 640px — which is most
-    // phones — the moment the map is first panned; a required credit that
-    // vanishes into an icon after one gesture isn't reliably "visible in the
-    // UI" on mobile, so this trades a little screen space for the credit
-    // actually staying on screen everywhere.
-    map.addControl(
-      new maplibregl.AttributionControl({ customAttribution: OSM_ATTR, compact: false }),
-    );
+    // Custom control (see `createAttributionControl` and the doc comment on
+    // `OSM_ATTR`) rather than `maplibregl.AttributionControl`: it never
+    // auto-collapses to an unlabelled "i" button the way the built-in
+    // control's default (non-`compact: false`) behaviour would on narrow
+    // viewports, and it can't merge/duplicate the style's own attribution
+    // since it doesn't look at the style at all.
+    map.addControl(createAttributionControl(attributionElRef), "bottom-left");
     map.addControl(new maplibregl.NavigationControl(), "bottom-right");
     // Suppress the browser's default context menu on the map canvas.
     map.getCanvas().addEventListener("contextmenu", (e) => e.preventDefault());
@@ -255,12 +362,26 @@ function MapViewInner() {
     tooltip.hidden = true;
     containerRef.current.appendChild(tooltip);
     tooltipRef.current = tooltip;
-    // Route polylines: one GeoJSON source + one data-driven line layer, added
-    // once at style load; marker DOM elements always render above map layers.
+    // Route polylines: one GeoJSON source + two data-driven line layers
+    // (a wide, light "casing" underneath the coloured line, so crossing day
+    // routes stay visually separable), added once at style load; marker DOM
+    // elements always render above map layers regardless.
     map.on("load", () => {
       map.addSource("day-routes", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
+      });
+      // Added before the coloured line layer so it paints underneath it.
+      map.addLayer({
+        id: "day-routes-casing",
+        type: "line",
+        source: "day-routes",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": resolveCssColor("var(--bg-surface)"),
+          "line-width": 6,
+          "line-opacity": 0.35,
+        },
       });
       map.addLayer({
         id: "day-routes-line",
@@ -269,10 +390,22 @@ function MapViewInner() {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
           "line-color": ["get", "color"],
-          "line-width": 3,
-          "line-opacity": 0.75,
+          "line-width": 2.5,
+          "line-opacity": 0.5,
         },
       });
+      // Frame the whole trip on first load (release audit: this used to be
+      // just the hotel at a fixed zoom, which left far-flung stops, e.g. a
+      // Mt Fuji day trip from a Tokyo hotel, off-screen). `duration: 0` so it
+      // snaps rather than animating oddly right as the map appears.
+      const bounds = tripBounds(useStore.getState().currentTrip);
+      if (bounds) {
+        map.fitBounds(bounds, {
+          padding: fitBoundsPadding(containerRef.current),
+          maxZoom: 14,
+          duration: 0,
+        });
+      }
       setMapLoaded(true);
     });
     mapRef.current = map;
@@ -308,13 +441,67 @@ function MapViewInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctxMenu]);
 
-  // Recenter on the trip's base (hotel) whenever the opened trip changes.
+  // Fit the map to the whole trip's stops whenever the opened trip changes
+  // (falls back to centering on the base at a fixed zoom if the trip has no
+  // located places yet — `fitBounds` needs at least one coordinate).
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !trip) return;
-    map.jumpTo({ center: baseCenter(trip), zoom: 12 });
+    const bounds = tripBounds(trip);
+    if (bounds) {
+      map.fitBounds(bounds, {
+        padding: fitBoundsPadding(containerRef.current),
+        maxZoom: 14,
+        duration: 0,
+      });
+    } else {
+      map.jumpTo({ center: baseCenter(trip), zoom: 12 });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip?.id]);
+
+  // Keep the custom attribution strip clear of the timeline panel: on
+  // desktop `.timeline-pane` is a side-by-side grid column near the screen's
+  // top, so it never overlaps the map's bottom-left corner. On mobile it
+  // becomes a draggable bottom-sheet overlay (height between 20vh-85vh) that
+  // *does* cover the map's own bottom edge — and since it's a DOM sibling
+  // layered above the whole map at the page stacking level, no in-map
+  // z-index can win against it (see the release-audit fix for the mobile
+  // occlusion bug this replaced a two-part CSS-only attempt at). Instead,
+  // this measures how much of the map's bottom the sheet currently covers
+  // and pushes the strip up by exactly that much (plus a small gap) via
+  // inline `marginBottom` — on desktop that resolves to just the gap itself
+  // (coverage clamps to 0), matching the control's existing default margin,
+  // so there's no behaviour change there.
+  useEffect(() => {
+    const map = mapRef.current;
+    const containerEl = containerRef.current;
+    if (!map || !containerEl) return;
+    const GAP = 10;
+    const updateOffset = () => {
+      const attributionEl = attributionElRef.current;
+      if (!attributionEl) return;
+      const mapBottom = containerEl.getBoundingClientRect().bottom;
+      const sheet = document.querySelector<HTMLElement>(".timeline-pane");
+      const coverage = sheet ? Math.max(0, mapBottom - sheet.getBoundingClientRect().top) : 0;
+      attributionEl.style.marginBottom = `${coverage + GAP}px`;
+    };
+    updateOffset();
+    window.addEventListener("resize", updateOffset);
+    // The sheet is user-draggable (`--sheet-height`), which changes its
+    // rendered box size without necessarily firing a window resize —
+    // ResizeObserver catches that regardless of what caused it.
+    let sheetObserver: ResizeObserver | null = null;
+    const sheetEl = document.querySelector<HTMLElement>(".timeline-pane");
+    if (sheetEl && typeof ResizeObserver !== "undefined") {
+      sheetObserver = new ResizeObserver(updateOffset);
+      sheetObserver.observe(sheetEl);
+    }
+    return () => {
+      window.removeEventListener("resize", updateOffset);
+      sheetObserver?.disconnect();
+    };
+  }, [mapLoaded]);
 
   // Update the route polylines whenever the itinerary, trip or hidden days
   // change — and also on a light/dark scheme switch, since each feature's
@@ -328,6 +515,13 @@ function MapViewInner() {
       const source = map.getSource("day-routes");
       if (source && "setData" in source) {
         (source as maplibregl.GeoJSONSource).setData(routeFeatures(trip, itinerary, hiddenDays));
+      }
+      // The casing's colour is also a resolved (non-reactive) value baked in
+      // at layer-creation time, same reasoning as the per-feature colours
+      // above — re-resolve it here so a scheme switch doesn't leave it
+      // frozen at whichever theme was active on first load.
+      if (map.getLayer("day-routes-casing")) {
+        map.setPaintProperty("day-routes-casing", "line-color", resolveCssColor("var(--bg-surface)"));
       }
     };
     refresh();
@@ -343,7 +537,13 @@ function MapViewInner() {
   // highlight on hover.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapLoaded || !map.getLayer("day-routes-line")) return;
+    if (
+      !map ||
+      !mapLoaded ||
+      !map.getLayer("day-routes-line") ||
+      !map.getLayer("day-routes-casing")
+    )
+      return;
     const plan = itinerary?.days.find((d) => d.stops.some((s) => s.placeId === hoveredPlaceId));
     const hoveredDayId = plan?.dayId;
     if (hoveredDayId) {
@@ -351,7 +551,7 @@ function MapViewInner() {
         "case",
         ["==", ["get", "dayId"], hoveredDayId],
         0.95,
-        0.15,
+        0.12,
       ]);
       map.setPaintProperty("day-routes-line", "line-width", [
         "case",
@@ -359,9 +559,23 @@ function MapViewInner() {
         5,
         2,
       ]);
+      map.setPaintProperty("day-routes-casing", "line-opacity", [
+        "case",
+        ["==", ["get", "dayId"], hoveredDayId],
+        0.6,
+        0.1,
+      ]);
+      map.setPaintProperty("day-routes-casing", "line-width", [
+        "case",
+        ["==", ["get", "dayId"], hoveredDayId],
+        8,
+        5,
+      ]);
     } else {
-      map.setPaintProperty("day-routes-line", "line-opacity", 0.75);
-      map.setPaintProperty("day-routes-line", "line-width", 3);
+      map.setPaintProperty("day-routes-line", "line-opacity", 0.5);
+      map.setPaintProperty("day-routes-line", "line-width", 2.5);
+      map.setPaintProperty("day-routes-casing", "line-opacity", 0.35);
+      map.setPaintProperty("day-routes-casing", "line-width", 6);
     }
   }, [hoveredPlaceId, itinerary, mapLoaded]);
 
@@ -502,6 +716,13 @@ function MapViewInner() {
         // category badge an unrotated place to sit, independent of the pin.
         const wrap = document.createElement("div");
         wrap.className = "map-marker-wrap";
+        // Explicit stacking order (map.css's `:hover`/`:focus-visible` rule
+        // overrides this with a much higher z-index so a hovered/focused
+        // marker still always reliably lifts to the very top): later stops
+        // in a day sit above earlier ones in dense areas, rather than
+        // whichever marker happens to be last in DOM order winning.
+        // Unscheduled/hotel markers (no `number`) fall back to 0.
+        wrap.style.zIndex = String((number ?? 0) * 10);
         wrap.appendChild(el);
         if (!isHotel) {
           const badge = document.createElement("span");

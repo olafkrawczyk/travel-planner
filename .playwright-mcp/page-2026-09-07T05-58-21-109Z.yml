@@ -1,0 +1,114 @@
+- generic [ref=f16e5]:
+  - heading "Travel Planner" [level=1] [ref=f16e6]
+  - generic [ref=f16e7]:
+    - generic [ref=f16e8]:
+      - heading "New trip" [level=2] [ref=f16e9]
+      - generic [ref=f16e10]:
+        - text: Name
+        - textbox "Name" [ref=f16e11]:
+          - /placeholder: Tokyo 2026
+      - generic [ref=f16e12]:
+        - text: Starting city
+        - textbox "Starting city" [ref=f16e13]:
+          - /placeholder: e.g. Tokyo — seeds the home base location
+      - generic [ref=f16e14]:
+        - generic [ref=f16e15]:
+          - text: From
+          - textbox "From" [ref=f16e16]: 2026-09-07
+        - generic [ref=f16e17]:
+          - text: To
+          - textbox "To" [ref=f16e18]: 2026-09-11
+      - button "Create trip" [ref=f16e19] [cursor=pointer]
+      - paragraph [ref=f16e20]: One day is generated per date with default 09:00–21:00 hours; the starting city becomes the home base location. Trips are capped at 60 days.
+    - generic [ref=f16e21]:
+      - heading "Your trips" [level=2] [ref=f16e22]
+      - list [ref=f16e23]:
+        - listitem [ref=f16e24]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e25] [cursor=pointer]:
+            - strong [ref=f16e26]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e27]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e28]:
+            - button "Share" [ref=f16e29] [cursor=pointer]
+            - button "Export" [ref=f16e30] [cursor=pointer]
+            - button "Delete" [ref=f16e31] [cursor=pointer]
+        - listitem [ref=f16e32]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e33] [cursor=pointer]:
+            - strong [ref=f16e34]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e35]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e36]:
+            - button "Share" [ref=f16e37] [cursor=pointer]
+            - button "Export" [ref=f16e38] [cursor=pointer]
+            - button "Delete" [ref=f16e39] [cursor=pointer]
+        - listitem [ref=f16e40]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e41] [cursor=pointer]:
+            - strong [ref=f16e42]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e43]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e44]:
+            - button "Share" [ref=f16e45] [cursor=pointer]
+            - button "Export" [ref=f16e46] [cursor=pointer]
+            - button "Delete" [ref=f16e47] [cursor=pointer]
+        - listitem [ref=f16e48]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e49] [cursor=pointer]:
+            - strong [ref=f16e50]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e51]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e52]:
+            - button "Share" [ref=f16e53] [cursor=pointer]
+            - button "Export" [ref=f16e54] [cursor=pointer]
+            - button "Delete" [ref=f16e55] [cursor=pointer]
+        - listitem [ref=f16e56]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e57] [cursor=pointer]:
+            - strong [ref=f16e58]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e59]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e60]:
+            - button "Share" [ref=f16e61] [cursor=pointer]
+            - button "Export" [ref=f16e62] [cursor=pointer]
+            - button "Delete" [ref=f16e63] [cursor=pointer]
+        - listitem [ref=f16e64]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e65] [cursor=pointer]:
+            - strong [ref=f16e66]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e67]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e68]:
+            - button "Share" [ref=f16e69] [cursor=pointer]
+            - button "Export" [ref=f16e70] [cursor=pointer]
+            - button "Delete" [ref=f16e71] [cursor=pointer]
+        - listitem [ref=f16e72]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e73] [cursor=pointer]:
+            - strong [ref=f16e74]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e75]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e76]:
+            - button "Share" [ref=f16e77] [cursor=pointer]
+            - button "Export" [ref=f16e78] [cursor=pointer]
+            - button "Delete" [ref=f16e79] [cursor=pointer]
+        - listitem [ref=f16e80]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e81] [cursor=pointer]:
+            - strong [ref=f16e82]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e83]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e84]:
+            - button "Share" [ref=f16e85] [cursor=pointer]
+            - button "Export" [ref=f16e86] [cursor=pointer]
+            - button "Delete" [ref=f16e87] [cursor=pointer]
+        - listitem [ref=f16e88]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e89] [cursor=pointer]:
+            - strong [ref=f16e90]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e91]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e92]:
+            - button "Share" [ref=f16e93] [cursor=pointer]
+            - button "Export" [ref=f16e94] [cursor=pointer]
+            - button "Delete" [ref=f16e95] [cursor=pointer]
+        - listitem [ref=f16e96]:
+          - button "Tokyo & Lake Kawaguchi 5-Day 5 days, 33 places, updated 07/09/2026" [ref=f16e97] [cursor=pointer]:
+            - strong [ref=f16e98]: Tokyo & Lake Kawaguchi 5-Day
+            - generic [ref=f16e99]: 5 days, 33 places, updated 07/09/2026
+          - generic [ref=f16e100]:
+            - button "Share" [ref=f16e101] [cursor=pointer]
+            - button "Export" [ref=f16e102] [cursor=pointer]
+            - button "Delete" [ref=f16e103] [cursor=pointer]
+  - generic [ref=f16e104]:
+    - button "Import trip JSON…" [ref=f16e105] [cursor=pointer]
+    - 'button "Load sample: Tokyo & Fuji (5D)" [ref=f16e106] [cursor=pointer]'
+    - 'button "Load sample: Iceland Ring (12D)" [ref=f16e107] [cursor=pointer]'
+    - 'button "Load sample: Tokyo" [ref=f16e108] [cursor=pointer]'
+    - 'button "Load sample: Warsaw" [ref=f16e109] [cursor=pointer]'
+    - 'button "Load sample: Tokyo & Hakone" [ref=f16e110] [cursor=pointer]'
+    - 'button "Load sample: Tokyo (100 places)" [ref=f16e111] [cursor=pointer]'
+    - 'button "Load sample: Tokyo (custom)" [ref=f16e112] [cursor=pointer]'

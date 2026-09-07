@@ -1,26 +1,45 @@
 
 :root {
-  /* Colors - Light Theme */
-  --bg-app: #f8fafc;
-  --bg-surface: #ffffff;
-  --bg-surface-hover: #f1f5f9;
-  --bg-surface-active: #e2e8f0;
-  
-  --border: #e2e8f0;
-  --border-strong: #cbd5e1;
+  /* Colors - Light Theme ("map paper": cool gray-green chrome, ink for
+   * emphasis instead of an accent hue — see aliases below). */
+  --paper: #ECEFEA;
+  --surface: #FFFFFF;
+  --surface-2: #F5F7F3;
 
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --text-inverse: #ffffff;
-  
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-subtle: #eff6ff;
-  
+  --ink: #16211C;
+  --ink-soft: #5A6862;
+  --ink-faint: #8A968F;
+
+  --rule: #C9D1CB;
+  --rule-soft: #DFE5E0;
+  --inverse: #F7F9F6;
+
+  /* Semantic aliases onto the palette above. Every other file in the app
+   * consumes these names (not --paper/--ink/... directly), so re-skinning
+   * only ever happens here. --accent is deliberately aliased to --ink: this
+   * app uses colour for exactly one thing (day identity, see --day-1..12
+   * below), so emphasis elsewhere comes from ink + hairline rules, not a
+   * second hue. */
+  --bg-app: var(--paper);
+  --bg-surface: var(--surface);
+  --bg-surface-hover: var(--surface-2);
+  --bg-surface-active: var(--rule-soft);
+
+  --border: var(--rule-soft);
+  --border-strong: var(--rule);
+
+  --text: var(--ink);
+  --text-muted: var(--ink-soft);
+  --text-inverse: var(--inverse);
+
+  --accent: var(--ink);
+  --accent-hover: var(--ink-soft);
+  --accent-subtle: var(--surface-2);
+
   --danger: #ef4444;
   --danger-hover: #dc2626;
   --danger-subtle: #fef2f2;
-  
+
   --warning: #f59e0b;
   --warning-subtle: #fffbeb;
   /* Text-on-subtle variant (P1 #6): --warning at #f59e0b is only ~2.1:1
@@ -33,31 +52,38 @@
    * 7.09:1 on white. --warning itself is untouched for borders/icon fills. */
   --warning-text: #92400e;
 
-  /* Badges / statuses */
-  --badge-bg: #f1f5f9;
-  --badge-text: #475569;
-  --badge-border: #e2e8f0;
-  
-  --badge-bg-success: #ecfdf5;
-  --badge-text-success: #065f46;
-  --badge-border-success: #a7f3d0;
-  
-  --badge-bg-info: #eff6ff;
-  --badge-text-info: #1e40af;
-  --badge-border-info: #bfdbfe;
+  /* Badges / statuses — retuned to the neutral map-paper family; the
+   * success/info/danger variants are desaturated so they sit calmly on
+   * paper instead of shouting as saturated UI-chrome colours. */
+  --badge-bg: var(--surface-2);
+  --badge-text: var(--ink-soft);
+  --badge-border: var(--rule);
 
-  --badge-bg-danger: #fef2f2;
-  --badge-text-danger: #991b1b;
-  --badge-border-danger: #fecaca;
+  --badge-bg-success: #E8EFE6;
+  --badge-text-success: #3D5A43;
+  --badge-border-success: #C4D6C1;
 
-  /* Typography Scale */
+  --badge-bg-info: #E7EDEC;
+  --badge-text-info: #3E5A5C;
+  --badge-border-info: #C3D4D3;
+
+  --badge-bg-danger: #F3E7E5;
+  --badge-text-danger: #7A3F38;
+  --badge-border-danger: #E0C6C1;
+
+  /* Typography */
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Typography Scale — stronger top end for a printed-timetable feel. */
   --text-xs: 0.75rem; /* 12px */
-  --text-sm: 0.875rem; /* 14px */
-  --text-base: 1rem; /* 16px */
-  --text-lg: 1.125rem; /* 18px */
-  --text-xl: 1.25rem; /* 20px */
-  --text-2xl: 1.5rem; /* 24px */
-  
+  --text-sm: 0.8125rem; /* 13px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-lg: 1.0625rem; /* 17px */
+  --text-xl: 1.375rem; /* 22px */
+  --text-2xl: 2rem; /* 32px */
+  --text-3xl: 3rem; /* 48px */
+
   /* Spacing Scale (4px ramp) */
   --space-1: 0.25rem; /* 4px */
   --space-2: 0.5rem; /* 8px */
@@ -66,14 +92,20 @@
   --space-5: 1.25rem; /* 20px */
   --space-6: 1.5rem; /* 24px */
   --space-8: 2rem; /* 32px */
-  
-  /* Radii */
-  --radius-sm: 4px;
+
+  /* Radii — collapsed to two: sm for controls, md for containers.
+   * --radius-lg/--radius-xl are kept as aliases so existing call sites
+   * don't break. --radius-full stays distinct (day markers only). */
+  --radius-sm: 3px;
   --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  --radius-lg: var(--radius-md);
+  --radius-xl: var(--radius-md);
   --radius-full: 9999px;
-  
+
+  /* Shadows — floating overlays only (popovers, menus); no generic card
+   * shadow, emphasis comes from ink/hairline rules instead. */
+  --shadow-pop: 0 4px 16px -4px rgb(22 33 28 / .22);
+
   /* Component specific */
   --day-bg: var(--bg-surface);
   --day-text: var(--text);
@@ -89,7 +121,9 @@
    * means every step gets essentially the same WCAG luminance regardless of
    * hue (contrast depends only on L*, not hue, in Lab) — vs-white contrast
    * is 5.35-5.41:1 across all 12, so no step needed a special-cased fix for
-   * the classic "yellow/cyan reads lighter" problem.
+   * the classic "yellow/cyan reads lighter" problem. Against the new
+   * --paper (#ECEFEA, slightly darker than pure white) contrast is ~5.0:1
+   * across all 12 — still comfortably over the 4.5:1 AA floor.
    * Trade made explicit: sRGB's gamut is much narrower in the cyan/blue
    * region (roughly 195-240deg) than elsewhere at this lightness — max
    * in-gamut chroma there is ~28-30 vs ~50-95 for the rest of the wheel.
@@ -127,26 +161,38 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-app: #0f172a;
-    --bg-surface: #1e293b;
-    --bg-surface-hover: #334155;
-    --bg-surface-active: #475569;
-    
-    --border: #334155;
-    --border-strong: #475569;
-    
-    --text: #f8fafc;
-    --text-muted: #94a3b8;
-    --text-inverse: #000000;
-    
-    --accent: #3b82f6;
-    --accent-hover: #60a5fa;
-    --accent-subtle: #1e3a8a;
-    
+    --paper: #0E1411;
+    --surface: #18211C;
+    --surface-2: #212B25;
+
+    --ink: #E8EDE7;
+    --ink-soft: #9AA79F;
+    --ink-faint: #6B786F;
+
+    --rule: #2E3A33;
+    --rule-soft: #232E28;
+    --inverse: #0E1411;
+
+    --bg-app: var(--paper);
+    --bg-surface: var(--surface);
+    --bg-surface-hover: var(--surface-2);
+    --bg-surface-active: var(--rule-soft);
+
+    --border: var(--rule-soft);
+    --border-strong: var(--rule);
+
+    --text: var(--ink);
+    --text-muted: var(--ink-soft);
+    --text-inverse: var(--inverse);
+
+    --accent: var(--ink);
+    --accent-hover: var(--ink-soft);
+    --accent-subtle: var(--surface-2);
+
     --danger: #ef4444;
     --danger-hover: #f87171;
     --danger-subtle: #7f1d1d;
-    
+
     --warning: #f59e0b;
     --warning-subtle: #78350f;
     /* Same fix as the light theme above: #f59e0b on #78350f is ~4.2:1, just
@@ -155,21 +201,21 @@
      * --warning-subtle, 10.15:1 on --bg-surface. */
     --warning-text: #fcd34d;
 
-    --badge-bg: #334155;
-    --badge-text: #cbd5e1;
-    --badge-border: #475569;
-    
-    --badge-bg-success: #064e3b;
-    --badge-text-success: #a7f3d0;
-    --badge-border-success: #059669;
-    
-    --badge-bg-info: #1e3a8a;
-    --badge-text-info: #bfdbfe;
-    --badge-border-info: #1e40af;
+    --badge-bg: var(--surface-2);
+    --badge-text: var(--ink-soft);
+    --badge-border: var(--rule);
 
-    --badge-bg-danger: #7f1d1d;
-    --badge-text-danger: #fecaca;
-    --badge-border-danger: #991b1b;
+    --badge-bg-success: #1E2E22;
+    --badge-text-success: #A9CBA6;
+    --badge-border-success: #35492F;
+
+    --badge-bg-info: #1B2A2B;
+    --badge-text-info: #A6C6C6;
+    --badge-border-info: #304544;
+
+    --badge-bg-danger: #2E211F;
+    --badge-text-danger: #D9A79E;
+    --badge-border-danger: #4A312C;
 
     /* Same qualitative-palette method as the light theme (see :root above),
      * re-solved at L*=68 so it pops against the dark app background and
