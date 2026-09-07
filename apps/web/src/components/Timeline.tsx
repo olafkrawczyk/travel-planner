@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import type { DayPlan, Itinerary, Place, TravelOverride } from "@app/domain";
 import { useStore, dayColor } from "../store";
 import { UnscheduledTray } from "./UnscheduledTray";
+import { formatDuration } from "../format";
 
 function timeToMins(t: string) {
   if (!t) return 0;
@@ -527,10 +528,28 @@ function DaySection(props: {
       )}
 
       {plan && plan.stops.length > 0 && (
-        <p className="day-footnote hint tnum">
-          Return to {baseEnd?.name ?? "base"}: {plan.legs[plan.legs.length - 1]?.minutes ?? 0} min · slack{" "}
-          {plan.slackMin} min
-          {baseStart && baseEnd && ` · bases: ${baseStart.name} → ${baseEnd.name}`}
+        <p className="day-footnote hint">
+          <span className="day-footnote-item">
+            Return to {baseEnd?.name ?? "base"}:{" "}
+            <span className="tnum">{formatDuration(plan.legs[plan.legs.length - 1]?.minutes ?? 0)}</span>
+          </span>
+          <span className="day-footnote-item">
+            {plan.slackMin >= 0 ? (
+              <>
+                Free time left: <span className="tnum">{formatDuration(plan.slackMin)}</span>
+              </>
+            ) : (
+              <>
+                Over the day&rsquo;s end time by{" "}
+                <span className="tnum">{formatDuration(-plan.slackMin)}</span>
+              </>
+            )}
+          </span>
+          {baseStart && baseEnd && baseStart.id !== baseEnd.id && (
+            <span className="day-footnote-item">
+              Hotel change: {baseStart.name} to {baseEnd.name}
+            </span>
+          )}
         </p>
       )}
 

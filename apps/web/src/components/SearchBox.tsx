@@ -89,7 +89,7 @@ export function SearchBox() {
       dwellMin: 60,
       priority: 2,
       osmId: result.osmId,
-      notes: [result.city, result.country].filter(Boolean).join(", "),
+      notes: [result.street, result.city, result.country].filter(Boolean).join(", "),
     });
     setQuery("");
     setResults([]);
@@ -158,7 +158,7 @@ export function SearchBox() {
                   >
                     <span className="search-result-name">{r.name}</span>
                     <span className="search-result-meta">
-                      {[r.city, r.country].filter(Boolean).join(", ")}
+                      {[r.street, r.city, r.country].filter(Boolean).join(", ")}
                     </span>
                   </button>
                 </li>

@@ -91,7 +91,22 @@
   cursor: pointer;
 }
 .day-empty-action:disabled { color: var(--text-muted); text-decoration: none; cursor: default; }
-.day-footnote { padding: var(--space-1) var(--space-3) var(--space-2); margin: 0; font-size: var(--text-xs); color: var(--text-muted); }
+/* Discrete labelled figures, not a middle-dot-joined run-on: each item sits
+ * in its own span, separated by a hairline rule rather than a " · " string
+ * (mirrors .hotel-area-meta's separator treatment). */
+.day-footnote {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.day-footnote-item + .day-footnote-item {
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-2);
+}
 
 .timeline-track {
   position: relative;

@@ -531,18 +531,21 @@ function MapViewInner() {
   }, [trip?.id]);
 
   // Keep the custom attribution strip clear of the timeline panel: on
-  // desktop `.timeline-pane` is a side-by-side grid column near the screen's
-  // top, so it never overlaps the map's bottom-left corner. On mobile it
-  // becomes a draggable bottom-sheet overlay (height between 20vh-85vh) that
-  // *does* cover the map's own bottom edge — and since it's a DOM sibling
-  // layered above the whole map at the page stacking level, no in-map
-  // z-index can win against it (see the release-audit fix for the mobile
-  // occlusion bug this replaced a two-part CSS-only attempt at). Instead,
-  // this measures how much of the map's bottom the sheet currently covers
-  // and pushes the strip up by exactly that much (plus a small gap) via
-  // inline `marginBottom` — on desktop that resolves to just the gap itself
-  // (coverage clamps to 0), matching the control's existing default margin,
-  // so there's no behaviour change there.
+  // desktop `.timeline-pane` is a side-by-side grid column beside the map,
+  // so it shares no horizontal space with the map's bottom-left corner even
+  // though their vertical extents overlap. On mobile it becomes a
+  // draggable bottom-sheet overlay (height between 20vh-85vh) that *does*
+  // cover the map's own bottom edge — and since it's a DOM sibling layered
+  // above the whole map at the page stacking level, no in-map z-index can
+  // win against it (see the release-audit fix for the mobile occlusion bug
+  // this replaced a two-part CSS-only attempt at). Instead, this measures
+  // how much of the map's bottom the sheet currently covers, counting only
+  // the vertical overlap when the sheet's horizontal extent actually
+  // intersects the map's — and pushes the strip up by exactly that much
+  // (plus a small gap) via inline `marginBottom`. On desktop the sheet
+  // sits beside the map (no horizontal intersection), so coverage clamps
+  // to 0 and this resolves to just the gap itself, matching the control's
+  // existing default margin — no behaviour change there.
   useEffect(() => {
     const map = mapRef.current;
     const containerEl = containerRef.current;
@@ -551,9 +554,17 @@ function MapViewInner() {
     const updateOffset = () => {
       const attributionEl = attributionElRef.current;
       if (!attributionEl) return;
-      const mapBottom = containerEl.getBoundingClientRect().bottom;
+      const mapRect = containerEl.getBoundingClientRect();
       const sheet = document.querySelector<HTMLElement>(".timeline-pane");
-      const coverage = sheet ? Math.max(0, mapBottom - sheet.getBoundingClientRect().top) : 0;
+      let coverage = 0;
+      if (sheet) {
+        const sheetRect = sheet.getBoundingClientRect();
+        const horizontalOverlap =
+          Math.min(mapRect.right, sheetRect.right) - Math.max(mapRect.left, sheetRect.left);
+        if (horizontalOverlap > 0) {
+          coverage = Math.max(0, mapRect.bottom - sheetRect.top);
+        }
+      }
       attributionEl.style.marginBottom = `${coverage + GAP}px`;
     };
     updateOffset();

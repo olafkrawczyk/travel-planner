@@ -6,12 +6,14 @@
  * `border-top` in mobile.css. */
 .map-pane { border-right: 1px solid var(--border); }
 .maplibregl-map { position: absolute; inset: 0; }
-/* Search box overlay */
+/* Search box overlay. z-index 1010: comfortably above the highest a
+ * marker can ever reach (a hovered marker tops out at 1000 — see
+ * `.map-marker.hovered` below), so pins can never cover this. */
 .search-box {
   position: absolute;
   top: var(--space-3);
   left: var(--space-3);
-  z-index: 10;
+  z-index: 1010;
   width: calc(100% - var(--space-6) - 100px);
   max-width: 360px;
 }
@@ -267,7 +269,7 @@
   position: absolute;
   top: var(--space-3);
   right: var(--space-3);
-  z-index: 10;
+  z-index: 1010;
   background: var(--bg-surface);
   color: var(--text);
   border: 1px solid var(--border-strong);
@@ -309,12 +311,12 @@
   border-radius: var(--radius-sm);
   white-space: nowrap;
   pointer-events: none;
-  z-index: 50;
+  z-index: 1050;
   box-shadow: var(--shadow-pop);
 }
 .map-context-menu {
   position: absolute;
-  z-index: 30;
+  z-index: 1030;
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -341,6 +343,20 @@
 .map-context-menu button:focus-visible {
   background: var(--bg-surface-hover);
   outline: none;
+}
+/* MapLibre's own control-corner containers default to z-index: 2 (from
+ * maplibre-gl's base stylesheet), which is far below the per-marker
+ * z-index range below (a hovered marker reaches 1000) — since neither
+ * `.map-view` nor `.maplibregl-canvas-container` establishes a stacking
+ * context, markers positioned near a corner would otherwise paint over
+ * the zoom controls or the attribution strip. Raised here to match the
+ * rest of the map's fixed UI chrome (search box, toggle button, context
+ * menu, tooltip — all >= 1010 below) so pins can never obscure them. */
+.maplibregl-ctrl-top-left,
+.maplibregl-ctrl-top-right,
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right {
+  z-index: 1010;
 }
 /* MapLibre built-in navigation controls: styled with ink-and-rule chrome */
 .maplibregl-ctrl-group {

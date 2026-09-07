@@ -10,7 +10,15 @@ const photonPayload = {
     {
       type: "Feature",
       geometry: { coordinates: [139.7967, 35.7148] },
-      properties: { osm_id: 123, osm_type: "W", name: "Sensō-ji", city: "Tokyo", country: "Japan" },
+      properties: {
+        osm_id: 123,
+        osm_type: "W",
+        name: "Sensō-ji",
+        city: "Tokyo",
+        country: "Japan",
+        street: "Marszałkowska",
+        housenumber: "12",
+      },
     },
     {
       type: "Feature",
@@ -39,6 +47,7 @@ describe("PhotonClient", () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(r1).toHaveLength(1);
     expect(r1[0]!.name).toBe("Sensō-ji");
+    expect(r1[0]!.street).toBe("Marszałkowska 12");
     expect(r2).toEqual(r1);
     expect(r3).toEqual(r1);
   });

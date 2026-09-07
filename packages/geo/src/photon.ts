@@ -9,6 +9,8 @@ export interface GeoResult {
   name: string;
   country?: string;
   city?: string;
+  /** Street + house number, e.g. "ul. Marszałkowska 12" — lets the UI disambiguate same-named results in the same city. */
+  street?: string;
   lat: number;
   lng: number;
   osmId?: string;
@@ -56,6 +58,8 @@ interface PhotonFeature {
     country?: string;
     city?: string;
     countrycode?: string;
+    street?: string;
+    housenumber?: string;
   };
   type?: string;
 }
@@ -68,6 +72,7 @@ function toResults(json: { features?: PhotonFeature[] }): GeoResult[] {
       name: f.properties.name!,
       country: f.properties.country ?? f.properties.countrycode,
       city: f.properties.city,
+      street: [f.properties.street, f.properties.housenumber].filter(Boolean).join(" ") || undefined,
       lat: f.geometry.coordinates[1],
       lng: f.geometry.coordinates[0],
       osmId: f.properties.osm_id ? `${f.properties.osm_type ?? "n"}/${f.properties.osm_id}` : undefined,
