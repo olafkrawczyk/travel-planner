@@ -140,26 +140,69 @@ function DeleteTripButton({ name, onConfirm }: { name: string; onConfirm: () => 
  *  static "timetable" strip — the first thing a first-time visitor sees,
  *  before any copy. Purely decorative, so it's hidden from assistive tech. */
 function RouteHero() {
-  const rows: { color: string; y: number; stops: number[] }[] = [
-    { color: "var(--day-1)", y: 34, stops: [60, 190, 330, 480, 610] },
-    { color: "var(--day-2)", y: 94, stops: [90, 240, 390, 530, 660, 770] },
-    { color: "var(--day-3)", y: 154, stops: [50, 160, 290, 430, 560] },
-    { color: "var(--day-4)", y: 214, stops: [100, 270, 430, 590, 730, 860] },
+  const rows: { label: string; color: string; y: number; stops: number[] }[] = [
+    { label: "Day 1", color: "var(--day-1)", y: 52, stops: [80, 213, 360, 520, 680, 800] },
+    { label: "Day 2", color: "var(--day-2)", y: 100, stops: [80, 240, 400, 560, 720, 850] },
+    { label: "Day 3", color: "var(--day-3)", y: 148, stops: [80, 220, 380, 510, 670, 790] },
+    { label: "Day 4", color: "var(--day-4)", y: 196, stops: [80, 250, 420, 590, 730, 880] },
+  ];
+
+  const timeTicks = [
+    { x: 80, time: "09:00" },
+    { x: 280, time: "12:00" },
+    { x: 480, time: "15:00" },
+    { x: 680, time: "18:00" },
+    { x: 880, time: "21:00" },
   ];
 
   return (
     <svg
       className="route-hero"
-      viewBox="0 0 920 248"
+      viewBox="0 0 920 224"
       role="img"
       aria-hidden="true"
       focusable="false"
       preserveAspectRatio="xMidYMid meet"
     >
+      {/* Tabular time ticks and vertical hairline guidelines */}
+      {timeTicks.map((t) => (
+        <g key={t.time}>
+          <line
+            x1={t.x}
+            y1={24}
+            x2={t.x}
+            y2={212}
+            stroke="var(--border)"
+            strokeWidth={1}
+            strokeDasharray="2 4"
+          />
+          <text
+            x={t.x}
+            y={16}
+            textAnchor="middle"
+            className="route-hero-time tnum"
+            fill="var(--text-muted)"
+            fontSize={11}
+          >
+            {t.time}
+          </text>
+        </g>
+      ))}
+
       {rows.map((row, i) => {
         const next = rows[i + 1];
         return (
           <g key={row.color}>
+            <text
+              x={14}
+              y={row.y + 4}
+              fill={row.color}
+              fontSize={11}
+              fontFamily="var(--font-mono)"
+              fontWeight={600}
+            >
+              {row.label}
+            </text>
             {next && (
               <line
                 x1={row.stops[row.stops.length - 1]}
@@ -175,7 +218,7 @@ function RouteHero() {
               points={row.stops.map((x) => `${x},${row.y}`).join(" ")}
               fill="none"
               stroke={row.color}
-              strokeWidth={4}
+              strokeWidth={3.5}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -183,18 +226,20 @@ function RouteHero() {
               si === 0 ? (
                 <rect key={x} x={x - 5} y={row.y - 5} width={10} height={10} fill={row.color} />
               ) : (
-                <circle key={x} cx={x} cy={row.y} r={5} fill="var(--bg-surface)" stroke={row.color} strokeWidth={3} />
+                <circle
+                  key={x}
+                  cx={x}
+                  cy={row.y}
+                  r={5}
+                  fill="var(--bg-surface)"
+                  stroke={row.color}
+                  strokeWidth={3}
+                />
               ),
             )}
           </g>
         );
       })}
-      <text x={60} y={16} className="tnum route-hero-time" fill="var(--text-muted)" fontSize={12}>
-        09:00
-      </text>
-      <text x={610} y={16} textAnchor="end" className="tnum route-hero-time" fill="var(--text-muted)" fontSize={12}>
-        21:00
-      </text>
     </svg>
   );
 }
@@ -272,45 +317,6 @@ export function TripList() {
         <h1 className="brandmark">Travel Planner</h1>
       )}
 
-      {isFirstRun && (
-        <>
-          <ol className="steps">
-            <li>Add places — search the map once a trip is open, or start from a sample below.</li>
-            <li>
-              Hit <strong>Regenerate</strong> (⟳ button, or Ctrl+Enter) to build the itinerary.
-            </li>
-            <li>Tweak: drag between days, pin favourites, or edit details — then regenerate again to apply.</li>
-          </ol>
-
-          <section className="samples">
-            <h2>Start from a sample</h2>
-            <div className="samples-featured">
-              {featuredSamples.map((s) => (
-                <button
-                  key={s.label}
-                  className="sample-tile"
-                  onClick={() => void loadSampleTrip(s.data)}
-                  title={s.title}
-                >
-                  <strong>{s.label}</strong>
-                  <span className="hint">{s.blurb}</span>
-                </button>
-              ))}
-            </div>
-            <ul className="samples-more">
-              {moreSamples.map((s) => (
-                <li key={s.label}>
-                  <button className="sample-row" onClick={() => void loadSampleTrip(s.data)} title={s.title}>
-                    <strong>{s.label}</strong>
-                    <span className="hint">{s.blurb}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </>
-      )}
-
       <div className="workspace">
         <form
           className="trip-form"
@@ -361,7 +367,34 @@ export function TripList() {
           </p>
         </form>
 
-        {trips.length > 0 && (
+        {isFirstRun ? (
+          <section className="samples">
+            <h2>Start from a sample</h2>
+            <div className="samples-featured">
+              {featuredSamples.map((s) => (
+                <button
+                  key={s.label}
+                  className="sample-tile"
+                  onClick={() => void loadSampleTrip(s.data)}
+                  title={s.title}
+                >
+                  <strong>{s.label}</strong>
+                  <span className="hint">{s.blurb}</span>
+                </button>
+              ))}
+            </div>
+            <ul className="samples-more">
+              {moreSamples.map((s) => (
+                <li key={s.label}>
+                  <button className="sample-row" onClick={() => void loadSampleTrip(s.data)} title={s.title}>
+                    <strong>{s.label}</strong>
+                    <span className="hint">{s.blurb}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : (
           <section className="trips-panel">
             <h2>Your trips</h2>
             <ul className="trip-rows">

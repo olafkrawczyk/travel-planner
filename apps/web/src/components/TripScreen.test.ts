@@ -1,8 +1,58 @@
 import { describe, expect, it } from "vitest";
-import { shouldNotifyStaleOnEditorClose, staleEditToastMessage } from "./TripScreen";
+import {
+  formatDuration,
+  formatScore,
+  INFEASIBLE_SCORE_THRESHOLD,
+  shouldNotifyStaleOnEditorClose,
+  staleEditToastMessage,
+} from "./TripScreen";
 
 // Pure-logic coverage for the stale-on-editor-close notice (P1 #3). No
 // component-render harness in this repo — see PlaceEditor.test.ts.
+
+describe("formatDuration", () => {
+  it("converts raw large minute counts into human hours and mins", () => {
+    expect(formatDuration(1119)).toBe("18h 39m");
+  });
+
+  it("handles 0 minutes gracefully", () => {
+    expect(formatDuration(0)).toBe("0m");
+  });
+
+  it("handles sub-hour durations", () => {
+    expect(formatDuration(45)).toBe("45m");
+  });
+
+  it("handles exact hours without showing 0m", () => {
+    expect(formatDuration(120)).toBe("2h");
+  });
+
+  it("handles negative or non-finite numbers safely", () => {
+    expect(formatDuration(-15)).toBe("0m");
+    expect(formatDuration(NaN)).toBe("0m");
+    expect(formatDuration(Infinity)).toBe("0m");
+  });
+});
+
+describe("formatScore", () => {
+  it("hides normal feasible solver scores", () => {
+    expect(formatScore(1338)).toBeNull();
+    expect(formatScore(0)).toBeNull();
+    expect(formatScore(999999)).toBeNull();
+  });
+
+  it("surfaces infeasible scores as human-readable message", () => {
+    const res = formatScore(INFEASIBLE_SCORE_THRESHOLD);
+    expect(res).not.toBeNull();
+    expect(res?.text).toBe("some days can't fit their stops");
+    expect(res?.title).toContain("includes a large penalty");
+  });
+
+  it("surfaces Infinity or NaN scores as infeasible warning", () => {
+    expect(formatScore(Infinity)?.text).toBe("some days can't fit their stops");
+    expect(formatScore(NaN)?.text).toBe("some days can't fit their stops");
+  });
+});
 
 describe("shouldNotifyStaleOnEditorClose", () => {
   it("fires when the editor was open, is now closed, and something changed while it was open", () => {

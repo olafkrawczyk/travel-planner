@@ -36,9 +36,8 @@
 .chevron-icon.open { transform: rotate(90deg); }
 
 /* Coverage row: a calm, labelled entry per stay — ink and a hairline rule,
- * with a small day-colour marker (not a saturated full-bleed fill) tying it
- * back to that stay's place in the day-identity ramp used everywhere else
- * (badges, route line, map markers). */
+ * neutral styling that fits the printed route diagram / timetable theme,
+ * not a saturated or orange fill that could read as an error. */
 .stays-coverage {
   display: flex;
   gap: 2px;
@@ -49,9 +48,10 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  background: var(--bg-surface);
+  background: var(--bg-surface-hover);
   border: 1px solid var(--border);
   color: var(--text);
   font-size: var(--text-xs);
@@ -67,12 +67,15 @@
   border-top-right-radius: var(--radius-md);
   border-bottom-right-radius: var(--radius-md);
 }
-.stays-coverage-seg .seg-swatch {
-  width: 8px;
-  height: 8px;
-  min-width: 8px;
-  border-radius: var(--radius-full);
-  display: inline-block;
+.stays-coverage-seg .seg-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stays-coverage-seg .seg-nights {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
 }
 .stays-coverage-seg .checkin-mark {
   position: absolute;
@@ -86,81 +89,135 @@
 
 /* Each row is its own grid with a fixed, explicit column template shared by
  * every row — that's what keeps "Check-in"/"Nights"/the hotel field aligned
- * from row to row, unlike a plain flex row (which sizes each row's columns
- * from that row's own content and drifts as soon as two rows' content
- * widths differ). The trailing "remove" column is the only optional one, so
- * an absent remove button never shifts an earlier column. */
+ * from row to row, unlike a plain flex row. */
 .stay-row {
   display: grid;
-  grid-template-columns: 1.25rem minmax(11rem, 1fr) 7.5rem 4.5rem 1.75rem;
+  grid-template-columns: 1.25rem minmax(10rem, 1fr) 7.5rem 4rem 1.75rem;
   align-items: end;
-  column-gap: var(--space-3);
+  column-gap: var(--space-2);
   row-gap: var(--space-1);
 }
 .stay-hotel-icon {
   display: inline-flex;
   align-items: center;
-  height: 1.9rem;
+  justify-content: center;
+  height: 32px;
   color: var(--text-muted);
 }
-.stay-hotel-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-  min-width: 0;
-}
-.stay-row select { width: 100%; min-width: 0; }
-.stay-remove-btn { justify-self: start; }
 
 .stay-field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   font-size: var(--text-sm);
   color: var(--text-muted);
   min-width: 0;
 }
-.stay-field-label { font-size: var(--text-xs); }
+.stay-field-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 1.125rem;
+  line-height: 1.125rem;
+}
+.stay-field-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
 .stay-field select,
 .stay-field input[type="number"] {
   width: 100%;
+  height: 32px;
   box-sizing: border-box;
   color: var(--text);
+  font-size: var(--text-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
 }
-.stays-actions .stay-field { flex: 1 1 auto; min-width: 10rem; }
-.stays-actions { display: flex; align-items: end; gap: var(--space-2); flex-wrap: wrap; }
-.stay-fixed { font-size: var(--text-sm); color: var(--text); padding: var(--space-1) 0; }
+.stay-fixed {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stay-remove-btn {
+  justify-self: start;
+  height: 32px;
+  width: 1.75rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.stay-remove-btn:hover {
+  color: var(--text);
+  background: var(--bg-surface-hover);
+  border-color: var(--border);
+}
+.stay-remove-placeholder {
+  height: 32px;
+  width: 1.75rem;
+  display: inline-block;
+}
 
-/* Narrow-panel fallback: the desktop `.stay-row` column template above (icon
- * + hotel + 7.5rem check-in + 4.5rem nights + remove) needs ~26rem to avoid
- * clipping its own content — on a narrow container (a small phone, or a
- * narrower sidebar layout elsewhere in the app) that overflows the panel
- * with no scroll affordance of its own, silently swallowing the Nights
- * field. Below that width, fold the row onto two lines instead: hotel on
- * its own (full-width) line, then check-in/nights/remove sharing the line
- * below. `nth-of-type` picks out Check-in and Nights by DOM position (the
- * 1st and 2nd `.stay-field` children of `.stay-row` — see StaysPanel.tsx)
- * rather than needing dedicated classes for what are otherwise
- * interchangeable label+control pairs. */
-@container stays (max-width: 28rem) {
+.stays-actions {
+  display: flex;
+  align-items: end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+.stays-actions .stay-field {
+  flex: 1 1 auto;
+  min-width: 10rem;
+}
+.stays-actions .btn-add-change {
+  height: 32px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+/* Narrow-panel fallback: folds onto two lines below 32rem so check-in,
+ * nights, and remove have comfortable space without overflowing the panel. */
+@container stays (max-width: 32rem) {
   .stay-row {
     grid-template-columns: 1.25rem 1fr 4.5rem 1.75rem;
     grid-template-areas:
       "icon hotel hotel hotel"
       ".    checkin nights remove";
-    align-items: start;
+    align-items: end;
   }
-  .stay-hotel-icon { grid-area: icon; }
-  .stay-hotel-cell { grid-area: hotel; }
-  .stay-field:nth-of-type(1) { grid-area: checkin; }
-  .stay-field:nth-of-type(2) { grid-area: nights; }
+  .stay-hotel-icon {
+    grid-area: icon;
+    align-self: end;
+  }
+  .stay-hotel-field { grid-area: hotel; }
+  .stay-checkin-field { grid-area: checkin; }
+  .stay-nights-field { grid-area: nights; }
   .stay-remove-btn,
-  /* The `i === 0` placeholder that keeps the remove column's slot occupied
-   * (so a missing remove button never shifts later columns) is an
-   * unclassed `<span aria-hidden="true">` — distinguished from the (also
-   * aria-hidden) hotel icon span by excluding that class. */
-  .stay-row > span[aria-hidden="true"]:not(.stay-hotel-icon) {
+  .stay-remove-placeholder {
     grid-area: remove;
     align-self: end;
   }

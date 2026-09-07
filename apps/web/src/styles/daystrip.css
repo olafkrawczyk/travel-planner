@@ -57,9 +57,9 @@
 .day-strip-item {
   position: relative;
   z-index: 1;
-  flex: 1 1 76px;
-  min-width: 76px;
-  max-width: 128px;
+  flex: 1 1 88px;
+  min-width: 88px;
+  max-width: 140px;
   scroll-snap-align: start;
   display: flex;
   flex-direction: column;
@@ -122,6 +122,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 1px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.day-isolate-btn:hover {
+  background: var(--bg-surface-active);
+  border-color: var(--border);
+  color: var(--text);
 }
 
 .day-strip-bar-row {
@@ -140,7 +155,7 @@
 .day-strip-bar {
   display: block;
   flex: 1 1 auto;
-  min-width: 0;
+  min-width: 14px;
   height: 5px;
   border-radius: var(--radius-full);
   background: var(--border);
@@ -156,7 +171,9 @@
 }
 
 .day-strip-status {
-  font-size: var(--text-xs);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   white-space: nowrap;
   flex: 0 0 auto;

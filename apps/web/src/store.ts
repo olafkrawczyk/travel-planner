@@ -407,9 +407,12 @@ export const useStore = create<StoreState>((set, get) => {
    * check below, which can't succeed for them (currentTrip isn't the new
    * trip yet at the time this runs).
    */
+  let persistPromise = Promise.resolve();
+
   async function persist(trip: Trip): Promise<{ rev: number; conflict: boolean } | undefined> {
-    set({ saveState: "saving" });
-    try {
+    const p = persistPromise.then(async () => {
+      set({ saveState: "saving" });
+      try {
       const isCurrent = get().currentTrip?.id === trip.id;
       const expectedRev = isCurrent ? (get().currentTripRev ?? undefined) : undefined;
       const result = await get().repo.put(trip, expectedRev);
@@ -439,7 +442,10 @@ export const useStore = create<StoreState>((set, get) => {
       });
       return undefined;
     }
-  }
+  });
+  persistPromise = p.catch(() => {}) as any;
+  return p;
+}
 
   return {
     repo: new LocalRepository(),

@@ -22,10 +22,19 @@ function formatHHMM(iso: string | null): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function ChevronDownIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>
+  );
+}
+
 /** Minutes as "18h 39m" (or "45m" under an hour) — raw minute counts like
  *  "1119 min" aren't something a reader can size up at a glance. */
-function formatDuration(totalMin: number): string {
-  const m = Math.max(0, Math.round(totalMin));
+export function formatDuration(totalMin: number): string {
+  if (!Number.isFinite(totalMin) || totalMin <= 0) return "0m";
+  const m = Math.round(totalMin);
   const h = Math.floor(m / 60);
   const mm = m % 60;
   if (h === 0) return `${mm}m`;
@@ -53,9 +62,9 @@ function clampSheetVh(vh: number): number {
  * is worth surfacing (as an honest phrase, with the raw number moved to the
  * title for anyone who wants it) — a feasible score renders nothing.
  */
-const INFEASIBLE_SCORE_THRESHOLD = 1e9;
+export const INFEASIBLE_SCORE_THRESHOLD = 1e9;
 
-function formatScore(score: number): { text: string; title: string } | null {
+export function formatScore(score: number): { text: string; title: string } | null {
   if (!Number.isFinite(score) || score >= INFEASIBLE_SCORE_THRESHOLD) {
     const raw = Number.isFinite(score) ? Math.round(score).toLocaleString() : "infinite";
     return {
@@ -115,6 +124,8 @@ export function TripScreen() {
   const exportTripJson = useStore((s) => s.exportTripJson);
   const setToast = useStore((s) => s.setToast);
   const editingPlaceId = useStore((s) => s.editingPlaceId);
+
+  const [showRegenerateMenu, setShowRegenerateMenu] = useState(false);
 
   // Mobile bottom-sheet height (P1 #8): the handle used to be pure decoration
   // (no wiring at all) despite visually promising a resize. `sheetVh` drives
@@ -257,28 +268,75 @@ export function TripScreen() {
             </button>
           </div>
 
-          <button className="btn-ghost" onClick={() => void handleShare()} title="Copy a share link for this trip">
-            <span className="btn-label">Share</span>
+          <button
+            className="btn-ghost"
+            onClick={() => void handleShare()}
+            title="Copy a share link for this trip"
+            aria-label="Share trip"
+          >
+            ↗ <span className="btn-label">Share</span>
           </button>
-          <button className="btn-ghost" onClick={undo} disabled={past.length === 0} title="Undo (Ctrl+Z)">
+          <button
+            className="btn-ghost"
+            onClick={undo}
+            disabled={past.length === 0}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
             ↶ <span className="btn-label">Undo</span>
           </button>
-          <button className="btn-ghost" onClick={redo} disabled={future.length === 0} title="Redo (Ctrl+Shift+Z)">
+          <button
+            className="btn-ghost"
+            onClick={redo}
+            disabled={future.length === 0}
+            title="Redo (Ctrl+Shift+Z)"
+            aria-label="Redo"
+          >
             ↷ <span className="btn-label">Redo</span>
           </button>
 
-          <button
-            onClick={regenerate}
-            disabled={solving}
-            className={"regenerate" + (dirty ? " dirty" : "")}
-            title={
-              dirty
-                ? `${pendingChanges} change${pendingChanges === 1 ? "" : "s"} not yet planned — recompute the itinerary (Ctrl+Enter)`
-                : "Recompute the itinerary (Ctrl+Enter)"
-            }
-          >
-            ⟳ Regenerate
-          </button>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <div style={{ display: "flex" }}>
+              <button
+                onClick={() => { regenerate(); setShowRegenerateMenu(false); }}
+                disabled={solving}
+                className={"regenerate" + (dirty ? " dirty" : "")}
+                title={
+                  dirty
+                    ? `${pendingChanges} change${pendingChanges === 1 ? "" : "s"} not yet planned — recompute the itinerary (Ctrl+Enter)`
+                    : "Recompute the itinerary (Ctrl+Enter)"
+                }
+                style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0 }}
+              >
+                Regenerate
+              </button>
+              <button
+                className={"regenerate" + (dirty ? " dirty" : "")}
+                disabled={solving}
+                onClick={() => setShowRegenerateMenu(!showRegenerateMenu)}
+                style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, padding: "0 6px", borderLeft: "1px solid var(--border)" }}
+                aria-label="Regenerate options"
+              >
+                <ChevronDownIcon />
+              </button>
+            </div>
+            {showRegenerateMenu && (
+              <div style={{ position: "absolute", right: 0, top: "100%", marginTop: "4px", background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "4px", display: "flex", flexDirection: "column", minWidth: "220px", zIndex: 1000, boxShadow: "0 4px 12px rgba(0,0,0,0.15)" }}>
+                <button
+                  style={{ padding: "8px 12px", background: "transparent", border: "none", textAlign: "left", width: "100%", cursor: "pointer", fontSize: "14px", borderRadius: "var(--radius-sm)", color: "var(--text)" }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-surface-hover)"}
+                  onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                  onClick={() => {
+                    mutateTrip(draft => { draft.settings.solverStrategy = "clusterFirst"; }, { type: "full" } as any);
+                    regenerate();
+                    setShowRegenerateMenu(false);
+                  }}
+                >
+                  Generate using clusterFirst
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

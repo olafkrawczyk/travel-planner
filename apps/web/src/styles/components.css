@@ -180,7 +180,7 @@ button.toast-dismiss:hover:not(:disabled) {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  z-index: 2000;
   padding: var(--space-4);
 }
 .modal { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: var(--space-2); max-height: 90dvh; overflow: auto; background: var(--bg-app); border-radius: var(--radius-lg); padding: var(--space-4); }
@@ -279,43 +279,15 @@ button.toast-dismiss:hover:not(:disabled) {
   color: var(--text-muted);
 }
 
-/* Steps (add → regenerate → tweak is a genuine sequence, so numbering is
- * legitimate here) — plain ink counters, not coloured: colour is reserved
- * for day identity. */
-.steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  counter-reset: step;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  max-width: 62ch;
-  font-size: var(--text-base);
-}
-.steps li {
-  counter-increment: step;
-  padding-left: var(--space-6);
-  position: relative;
-}
-.steps li::before {
-  content: counter(step) ".";
-  position: absolute;
-  left: 0;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}
-
 /* Samples: two featured tiles (equal height, resolves cleanly at 2-up) plus
- * the remaining near-duplicate Tokyo variants as a compact hairline list —
- * replaces the old 7-card grid that left an orphan on row three. */
+ * the remaining variants as a compact hairline list — replaces the ragged
+ * 7-card grid that left an orphan on row three. */
 .samples h2 {
   margin: 0 0 var(--space-3);
 }
 .samples-featured {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-3);
 }
@@ -330,6 +302,8 @@ button.toast-dismiss:hover:not(:disabled) {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
+  color: var(--text);
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 .sample-tile:hover {
   border-color: var(--accent);
@@ -337,6 +311,7 @@ button.toast-dismiss:hover:not(:disabled) {
 }
 .sample-tile strong {
   font-size: var(--text-lg);
+  color: var(--text);
 }
 .samples-more {
   margin: 0;
@@ -362,6 +337,8 @@ button.toast-dismiss:hover:not(:disabled) {
   overflow-wrap: normal;
   word-break: normal;
   hyphens: none;
+  color: var(--text);
+  transition: background 0.15s ease;
 }
 .sample-row:hover {
   background: var(--bg-surface-hover);
@@ -370,9 +347,13 @@ button.toast-dismiss:hover:not(:disabled) {
 .sample-row strong {
   flex-shrink: 0;
   white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--text);
 }
 .sample-row .hint {
   text-align: right;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 /* Workspace: the creation form and (once any trip exists) the trip list,
@@ -380,13 +361,18 @@ button.toast-dismiss:hover:not(:disabled) {
  * ~600px centred column the page used to sit in. */
 .workspace {
   display: grid;
-  grid-template-columns: minmax(280px, 420px) 1fr;
+  grid-template-columns: minmax(300px, 380px) 1fr;
   gap: var(--space-8);
   align-items: start;
 }
 @media (max-width: 860px) {
   .workspace {
     grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+  .trips-panel,
+  .samples {
+    order: -1;
   }
 }
 

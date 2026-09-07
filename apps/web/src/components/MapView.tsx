@@ -51,24 +51,7 @@ function createAttributionControl(elRef: { current: HTMLDivElement | null }): ma
   };
 }
 
-/** Small glyph shown as a secondary corner badge on non-hotel markers, so
- *  category survives as information without a second competing colour
- *  channel (day colour already owns the marker fill/border). */
-const CATEGORY_GLYPH: Record<Category, string> = {
-  museum: "🏛",
-  viewpoint: "👁",
-  cafe: "☕",
-  restaurant: "🍴",
-  shop: "🛍",
-  park: "🌳",
-  temple: "⛩",
-  hotel: "🛏",
-  other: "•",
-};
-
-/** Text form of the category glyph above, for the marker's accessible name
- *  (P0 #3) — the glyph itself stays `aria-hidden`, so category has to reach
- *  screen-reader users some other way. */
+/** Text form of the category for the marker's accessible name. */
 const CATEGORY_LABEL: Record<Category, string> = {
   museum: "museum",
   viewpoint: "viewpoint",
@@ -131,74 +114,117 @@ function markersFor(trip: Trip, itinerary: Itinerary | null, showBases: boolean)
   });
 }
 
-/** Turn a straight path through `coords` into a gently arced one: each
- *  consecutive pair of points becomes a quadratic-Bezier arc that bulges a
- *  modest fraction of the segment's length away from its midpoint (sides
- *  alternate per segment, so a day's route reads as a gentle wave rather
- *  than a straight-line "star" pattern radiating from a shared hub). The
- *  arc still passes through every real coordinate exactly — only the
- *  in-between geometry is curved — which is enough to visually separate
- *  crossing day routes without attempting real road geometry (out of
- *  scope). */
-function curveThroughPoints(coords: [number, number][]): [number, number][] {
-  if (coords.length < 2) return coords;
-  const OFFSET_FRACTION = 0.1;
-  const STEPS_PER_SEGMENT = 14;
-  const result: [number, number][] = [coords[0]!];
-  for (let i = 0; i < coords.length - 1; i++) {
-    const [x0, y0] = coords[i]!;
-    const [x1, y1] = coords[i + 1]!;
-    const midX = (x0 + x1) / 2;
-    const midY = (y0 + y1) / 2;
-    const dx = x1 - x0;
-    const dy = y1 - y0;
-    const len = Math.hypot(dx, dy);
-    const side = i % 2 === 0 ? 1 : -1;
-    // Unit vector perpendicular to the segment, flipped every other segment.
-    const perpX = len === 0 ? 0 : (-dy / len) * side;
-    const perpY = len === 0 ? 0 : (dx / len) * side;
-    const controlX = midX + perpX * len * OFFSET_FRACTION;
-    const controlY = midY + perpY * len * OFFSET_FRACTION;
-    for (let s = 1; s <= STEPS_PER_SEGMENT; s++) {
-      const t = s / STEPS_PER_SEGMENT;
-      const inv = 1 - t;
-      const x = inv * inv * x0 + 2 * inv * t * controlX + t * t * x1;
-      const y = inv * inv * y0 + 2 * inv * t * controlY + t * t * y1;
-      result.push([x, y]);
+/**
+ * Detect places with identical or very close geographic coordinates (< 25m)
+ * and fan them out radially around their centroid so overlapping markers
+ * remain individually visible, hoverable, and clickable.
+ */
+function disperseOverlappingCoords(
+  items: Array<{ place: Place }>
+): Map<string, [number, number]> {
+  const THRESHOLD = 0.00025; // ~25 meters
+  const groups: Array<Array<{ id: string; lat: number; lng: number }>> = [];
+
+  for (const item of items) {
+    const p = item.place;
+    let foundGroup = false;
+    for (const group of groups) {
+      const rep = group[0]!;
+      const dLat = Math.abs(rep.lat - p.lat);
+      const dLng = Math.abs(rep.lng - p.lng);
+      if (dLat < THRESHOLD && dLng < THRESHOLD) {
+        group.push({ id: p.id, lat: p.lat, lng: p.lng });
+        foundGroup = true;
+        break;
+      }
+    }
+    if (!foundGroup) {
+      groups.push([{ id: p.id, lat: p.lat, lng: p.lng }]);
+    }
+  }
+
+  const result = new Map<string, [number, number]>();
+  for (const group of groups) {
+    if (group.length === 1) {
+      result.set(group[0]!.id, [group[0]!.lng, group[0]!.lat]);
+    } else {
+      const count = group.length;
+      const centerLng = group.reduce((sum, g) => sum + g.lng, 0) / count;
+      const centerLat = group.reduce((sum, g) => sum + g.lat, 0) / count;
+      const radius = 0.00022; // ~20-25m offset
+      const cosLat = Math.cos((centerLat * Math.PI) / 180);
+
+      group.forEach((item, i) => {
+        const angle = (2 * Math.PI * i) / count - Math.PI / 2;
+        const lng = centerLng + (radius * Math.cos(angle)) / cosLat;
+        const lat = centerLat + radius * Math.sin(angle);
+        result.set(item.id, [lng, lat]);
+      });
     }
   }
   return result;
 }
 
+const polylineCache = new Map<string, [number, number][]>();
+
 /** GeoJSON line per solved day: base start → ordered stops → base end, in the
- *  day's colour. The colour is resolved to a concrete value here (GeoJSON
- *  feature properties are plain data — MapLibre's `["get", "color"]` paint
- *  expression can't dereference a live CSS custom property), so this must be
- *  re-run whenever the colour scheme changes, not just when the trip does. */
+ *  day's colour. Uses road polyline if available from OSRM, otherwise clean
+ *  diagram geometry. Emphasizes active day and subdues inactive days to eliminate
+ *  spiderwebbing. */
 function routeFeatures(
   trip: Trip,
   itinerary: Itinerary | null,
   hiddenDays: Set<string>,
+  activeDayId: string | null,
+  hoveredPlaceId: string | null,
+  routeGeometries: Record<string, [number, number][]>,
 ): GeoJSON.FeatureCollection<GeoJSON.LineString> {
   const byId = new Map(trip.places.map((p) => [p.id, p]));
   const features: GeoJSON.Feature<GeoJSON.LineString>[] = [];
+
+  const hoveredDayId = hoveredPlaceId
+    ? itinerary?.days.find((d) => d.stops.some((s) => s.placeId === hoveredPlaceId))?.dayId ?? null
+    : null;
+
   itinerary?.days.forEach((plan, dayIndex) => {
     if (hiddenDays.has(plan.dayId)) return;
     const day = trip.days.find((d) => d.id === plan.dayId);
     if (!day) return;
     const ids = [day.baseStartId, ...plan.stops.map((s) => s.placeId), day.baseEndId];
-    const coordinates: [number, number][] = [];
+    const rawCoords: [number, number][] = [];
     for (const id of ids) {
       const p = byId.get(id);
-      if (p) coordinates.push([p.lng, p.lat]);
+      if (p) rawCoords.push([p.lng, p.lat]);
     }
-    if (coordinates.length < 2) return;
+    if (rawCoords.length < 2) return;
+
+    // Use road polyline if available, otherwise direct diagram geometry
+    const coordinates = routeGeometries[plan.dayId] ?? rawCoords;
+
+    const isFocused = hoveredDayId
+      ? plan.dayId === hoveredDayId
+      : activeDayId
+        ? plan.dayId === activeDayId
+        : dayIndex === 0;
+
     features.push({
       type: "Feature",
-      properties: { dayId: plan.dayId, color: resolveCssColor(dayColor(dayIndex)) },
-      geometry: { type: "LineString", coordinates: curveThroughPoints(coordinates) },
+      properties: {
+        dayId: plan.dayId,
+        color: resolveCssColor(dayColor(dayIndex)),
+        isFocused: isFocused ? 1 : 0,
+      },
+      geometry: { type: "LineString", coordinates },
     });
   });
+
+  // Sort so focused route paints on top
+  features.sort(
+    (a, b) =>
+      ((a.properties?.isFocused as number) ?? 0) -
+      ((b.properties?.isFocused as number) ?? 0),
+  );
+
   return { type: "FeatureCollection", features };
 }
 
@@ -214,32 +240,47 @@ function baseCenter(trip: Trip | null): [number, number] {
   return place ? [place.lng, place.lat] : [139.7671, 35.6812];
 }
 
-/** Bounds enclosing every place in the trip, for framing the whole trip on
- *  load and on trip change (release audit: initial view used to be just the
- *  hotel at a fixed zoom, which put far-flung stops off-screen). Returns
- *  `null` when the trip has no places yet — `fitBounds` needs at least one
- *  coordinate — so callers fall back to `baseCenter` + a fixed zoom instead.
- *  Reuses the same `coordinates.reduce(...)` pattern the focusDayId effect
- *  below uses to build a single day's bounds. */
-function tripBounds(trip: Trip | null): maplibregl.LngLatBounds | null {
-  const coordinates: [number, number][] = (trip?.places ?? []).map((p) => [p.lng, p.lat]);
-  if (coordinates.length === 0) return null;
-  return coordinates.reduce(
-    (b, c) => b.extend(c),
-    new maplibregl.LngLatBounds(coordinates[0]!, coordinates[0]!),
-  );
+/**
+ * Retrieve coordinates for the active day's planned stops.
+ * Fits the active day's actual planned stops rather than the entire trip,
+ * ensuring Day 1 at Fuji is properly framed instead of fitting Tokyo.
+ */
+function getDayCoordinates(
+  trip: Trip | null,
+  itinerary: Itinerary | null,
+  dayId: string | null,
+): [number, number][] {
+  if (!trip) return [];
+  const byId = new Map(trip.places.map((p) => [p.id, p]));
+  const targetDay = dayId ? trip.days.find((d) => d.id === dayId) : trip.days[0];
+  const targetDayId = targetDay?.id ?? trip.days[0]?.id;
+
+  const plan = itinerary?.days.find((d) => d.dayId === targetDayId);
+  const coordinates: [number, number][] = [];
+
+  if (plan && plan.stops.length > 0) {
+    for (const stop of plan.stops) {
+      const p = byId.get(stop.placeId);
+      if (p) coordinates.push([p.lng, p.lat]);
+    }
+  }
+
+  // If no planned stops yet for this day, fall back to the day's base hotel
+  if (coordinates.length === 0 && targetDay) {
+    const base = byId.get(targetDay.baseStartId) ?? byId.get(targetDay.baseEndId);
+    if (base) coordinates.push([base.lng, base.lat]);
+  }
+
+  // Fallback to trip places if day has neither stops nor base
+  if (coordinates.length === 0 && trip.places.length > 0) {
+    const p = trip.places[0]!;
+    coordinates.push([p.lng, p.lat]);
+  }
+
+  return coordinates;
 }
 
-/** Padding for `fitBounds` calls that frame the whole trip. Desktop keeps
- *  generous, roughly even padding for breathing room around floating
- *  controls (search box, hotel toggle, nav control, attribution strip) — the
- *  timeline panel itself is a separate CSS grid column outside the map's own
- *  container, so fitBounds computed against the map canvas already excludes
- *  it without extra right-padding. On mobile the timeline instead becomes a
- *  bottom-sheet overlay covering roughly the bottom half of the map, so
- *  bottom padding is computed from the container's own current height (not
- *  cached — viewport/container size can differ between calls) to keep the
- *  fitted bounds in the visible top portion above the sheet. */
+/** Padding for `fitBounds` calls that frame the active day or trip. */
 function fitBoundsPadding(containerEl: HTMLElement | null): maplibregl.PaddingOptions {
   const isMobile = window.matchMedia("(max-width: 820px)").matches;
   if (isMobile) {
@@ -247,6 +288,36 @@ function fitBoundsPadding(containerEl: HTMLElement | null): maplibregl.PaddingOp
     return { top: 70, bottom: bottom || 200, left: 60, right: 60 };
   }
   return { top: 70, bottom: 70, left: 60, right: 90 };
+}
+
+function fitDayBounds(
+  map: maplibregl.Map,
+  coordinates: [number, number][],
+  containerEl: HTMLElement | null,
+  instant: boolean = false,
+) {
+  if (coordinates.length === 0) return;
+  const padding = fitBoundsPadding(containerEl);
+
+  if (coordinates.length === 1) {
+    if (instant) {
+      map.jumpTo({ center: coordinates[0]!, zoom: 14 });
+    } else {
+      map.easeTo({ center: coordinates[0]!, zoom: 14, duration: 400 });
+    }
+    return;
+  }
+
+  const bounds = coordinates.reduce(
+    (b, c) => b.extend(c),
+    new maplibregl.LngLatBounds(coordinates[0]!, coordinates[0]!),
+  );
+
+  map.fitBounds(bounds, {
+    padding,
+    maxZoom: 15,
+    duration: instant ? 0 : 400,
+  });
 }
 
 /**
@@ -313,6 +384,9 @@ function MapViewInner() {
   const toggleShowBases = useStore((s) => s.toggleShowBases);
   const openPlaceEditor = useStore((s) => s.openPlaceEditor);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [activeDayId, setActiveDayId] = useState<string | null>(() => trip?.days[0]?.id ?? null);
+  const [routeGeometries, setRouteGeometries] = useState<Record<string, [number, number][]>>({});
+  const initialFitDoneRef = useRef(false);
 
   /** Update the context-menu state and its event-handler mirror. */
   function updateMenu(next: typeof ctxMenu): void {
@@ -379,8 +453,8 @@ function MapViewInner() {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
           "line-color": resolveCssColor("var(--bg-surface)"),
-          "line-width": 6,
-          "line-opacity": 0.35,
+          "line-width": ["case", ["==", ["get", "isFocused"], 1], 7, 4],
+          "line-opacity": ["case", ["==", ["get", "isFocused"], 1], 0.8, 0.4],
         },
       });
       map.addLayer({
@@ -390,21 +464,21 @@ function MapViewInner() {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
           "line-color": ["get", "color"],
-          "line-width": 2.5,
-          "line-opacity": 0.5,
+          "line-width": ["case", ["==", ["get", "isFocused"], 1], 3.5, 2],
+          "line-opacity": ["case", ["==", ["get", "isFocused"], 1], 0.95, 0.35],
         },
       });
-      // Frame the whole trip on first load (release audit: this used to be
-      // just the hotel at a fixed zoom, which left far-flung stops, e.g. a
-      // Mt Fuji day trip from a Tokyo hotel, off-screen). `duration: 0` so it
-      // snaps rather than animating oddly right as the map appears.
-      const bounds = tripBounds(useStore.getState().currentTrip);
-      if (bounds) {
-        map.fitBounds(bounds, {
-          padding: fitBoundsPadding(containerRef.current),
-          maxZoom: 14,
-          duration: 0,
-        });
+      // Frame the active day (Day 1) on first load.
+      const currentTrip = useStore.getState().currentTrip;
+      const currentItinerary = useStore.getState().itinerary;
+      if (currentTrip) {
+        const targetDayId = currentTrip.days[0]?.id ?? null;
+        const coords = getDayCoordinates(currentTrip, currentItinerary, targetDayId);
+        if (coords.length > 0) {
+          fitDayBounds(map, coords, containerRef.current, true);
+        } else {
+          map.jumpTo({ center: baseCenter(currentTrip), zoom: 12 });
+        }
       }
       setMapLoaded(true);
     });
@@ -441,19 +515,15 @@ function MapViewInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctxMenu]);
 
-  // Fit the map to the whole trip's stops whenever the opened trip changes
-  // (falls back to centering on the base at a fixed zoom if the trip has no
-  // located places yet — `fitBounds` needs at least one coordinate).
+  // Fit the map to the active day whenever the opened trip changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !trip) return;
-    const bounds = tripBounds(trip);
-    if (bounds) {
-      map.fitBounds(bounds, {
-        padding: fitBoundsPadding(containerRef.current),
-        maxZoom: 14,
-        duration: 0,
-      });
+    const targetDayId = trip.days[0]?.id ?? null;
+    setActiveDayId(targetDayId);
+    const coords = getDayCoordinates(trip, itinerary, targetDayId);
+    if (coords.length > 0) {
+      fitDayBounds(map, coords, containerRef.current, true);
     } else {
       map.jumpTo({ center: baseCenter(trip), zoom: 12 });
     }
@@ -503,23 +573,91 @@ function MapViewInner() {
     };
   }, [mapLoaded]);
 
-  // Update the route polylines whenever the itinerary, trip or hidden days
-  // change — and also on a light/dark scheme switch, since each feature's
-  // "color" property is a *resolved* colour baked in at build time (GeoJSON
-  // properties can't hold a live CSS var), so it would otherwise freeze at
-  // whichever theme was active when the source was last built.
+  // When itinerary first loads / updates, ensure Day 1 stops are framed
+  useEffect(() => {
+    if (!trip || !itinerary || !mapLoaded) return;
+    if (!initialFitDoneRef.current) {
+      const targetDayId = activeDayId ?? trip.days[0]?.id ?? null;
+      const coords = getDayCoordinates(trip, itinerary, targetDayId);
+      if (coords.length > 0) {
+        initialFitDoneRef.current = true;
+        const map = mapRef.current;
+        if (map) fitDayBounds(map, coords, containerRef.current, true);
+      }
+    }
+  }, [trip, itinerary, mapLoaded, activeDayId]);
+
+  // Fetch real road polylines from OSRM for each day's route when itinerary/trip changes.
+  useEffect(() => {
+    if (!trip || !itinerary) return;
+    let cancelled = false;
+
+    const byId = new Map(trip.places.map((p) => [p.id, p]));
+    const toFetch: Array<{ dayId: string; coords: [number, number][] }> = [];
+
+    for (const plan of itinerary.days) {
+      if (hiddenDays.has(plan.dayId)) continue;
+      const day = trip.days.find((d) => d.id === plan.dayId);
+      if (!day) continue;
+      const ids = [day.baseStartId, ...plan.stops.map((s) => s.placeId), day.baseEndId];
+      const coords: [number, number][] = [];
+      for (const id of ids) {
+        const p = byId.get(id);
+        if (p) coords.push([p.lng, p.lat]);
+      }
+      if (coords.length >= 2) {
+        toFetch.push({ dayId: plan.dayId, coords });
+      }
+    }
+
+    const fetchAll = async () => {
+      for (const { dayId, coords } of toFetch) {
+        if (cancelled) return;
+        const cacheKey = coords.map(([lng, lat]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(";");
+        if (polylineCache.has(cacheKey)) {
+          const cached = polylineCache.get(cacheKey)!;
+          setRouteGeometries((prev) => (prev[dayId] === cached ? prev : { ...prev, [dayId]: cached }));
+          continue;
+        }
+
+        try {
+          const coordStr = coords.map(([lng, lat]) => `${lng},${lat}`).join(";");
+          const url = `https://router.project-osrm.org/route/v1/driving/${coordStr}?overview=full&geometries=geojson`;
+          const res = await fetch(url);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.code === "Ok" && data.routes?.[0]?.geometry?.coordinates) {
+              const polyline = data.routes[0].geometry.coordinates as [number, number][];
+              polylineCache.set(cacheKey, polyline);
+              if (!cancelled) {
+                setRouteGeometries((prev) => ({ ...prev, [dayId]: polyline }));
+              }
+            }
+          }
+        } catch {
+          // Gracefully fall back to diagram geometry on offline / failure
+        }
+      }
+    };
+
+    void fetchAll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trip, itinerary, hiddenDays]);
+
+  // Update the route polylines whenever itinerary, trip, active day, or polylines change
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded || !trip) return;
     const refresh = () => {
       const source = map.getSource("day-routes");
       if (source && "setData" in source) {
-        (source as maplibregl.GeoJSONSource).setData(routeFeatures(trip, itinerary, hiddenDays));
+        (source as maplibregl.GeoJSONSource).setData(
+          routeFeatures(trip, itinerary, hiddenDays, activeDayId, hoveredPlaceId, routeGeometries),
+        );
       }
-      // The casing's colour is also a resolved (non-reactive) value baked in
-      // at layer-creation time, same reasoning as the per-feature colours
-      // above — re-resolve it here so a scheme switch doesn't leave it
-      // frozen at whichever theme was active on first load.
       if (map.getLayer("day-routes-casing")) {
         map.setPaintProperty("day-routes-casing", "line-color", resolveCssColor("var(--bg-surface)"));
       }
@@ -528,85 +666,22 @@ function MapViewInner() {
     const scheme = window.matchMedia("(prefers-color-scheme: dark)");
     scheme.addEventListener("change", refresh);
     return () => scheme.removeEventListener("change", refresh);
-  }, [trip, itinerary, hiddenDays, mapLoaded]);
-
-  // Cross-highlight routes on hover: where several days' routes overlap (e.g.
-  // multiple days crossing central Tokyo), colour alone can't disambiguate a
-  // tangle of lines. Hovering a place (or its marker) brightens and widens
-  // its own day's route and dims the rest, the same way markers already
-  // highlight on hover.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (
-      !map ||
-      !mapLoaded ||
-      !map.getLayer("day-routes-line") ||
-      !map.getLayer("day-routes-casing")
-    )
-      return;
-    const plan = itinerary?.days.find((d) => d.stops.some((s) => s.placeId === hoveredPlaceId));
-    const hoveredDayId = plan?.dayId;
-    if (hoveredDayId) {
-      map.setPaintProperty("day-routes-line", "line-opacity", [
-        "case",
-        ["==", ["get", "dayId"], hoveredDayId],
-        0.95,
-        0.12,
-      ]);
-      map.setPaintProperty("day-routes-line", "line-width", [
-        "case",
-        ["==", ["get", "dayId"], hoveredDayId],
-        5,
-        2,
-      ]);
-      map.setPaintProperty("day-routes-casing", "line-opacity", [
-        "case",
-        ["==", ["get", "dayId"], hoveredDayId],
-        0.6,
-        0.1,
-      ]);
-      map.setPaintProperty("day-routes-casing", "line-width", [
-        "case",
-        ["==", ["get", "dayId"], hoveredDayId],
-        8,
-        5,
-      ]);
-    } else {
-      map.setPaintProperty("day-routes-line", "line-opacity", 0.5);
-      map.setPaintProperty("day-routes-line", "line-width", 2.5);
-      map.setPaintProperty("day-routes-casing", "line-opacity", 0.35);
-      map.setPaintProperty("day-routes-casing", "line-width", 6);
-    }
-  }, [hoveredPlaceId, itinerary, mapLoaded]);
+  }, [trip, itinerary, hiddenDays, activeDayId, hoveredPlaceId, routeGeometries, mapLoaded]);
 
   // Focus (fit bounds over) a day's route when its card is clicked in the timeline.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !focusDayId || !trip || !itinerary) return;
-    const plan = itinerary.days.find((d) => d.dayId === focusDayId);
-    if (!plan) return;
-    const byId = new Map(trip.places.map((p) => [p.id, p]));
-    const coordinates: [number, number][] = [];
-    for (const stop of plan.stops) {
-      const p = byId.get(stop.placeId);
-      if (p) coordinates.push([p.lng, p.lat]);
+    setActiveDayId(focusDayId);
+    const coords = getDayCoordinates(trip, itinerary, focusDayId);
+    if (coords.length > 0) {
+      fitDayBounds(map, coords, containerRef.current, false);
     }
-    if (coordinates.length === 0) return;
-    const bounds = coordinates.reduce(
-      (b, c) => b.extend(c),
-      new maplibregl.LngLatBounds(coordinates[0]!, coordinates[0]!),
-    );
-    map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 400 });
     // Clear so clicking the same day again re-triggers the fit.
     useStore.setState({ focusDayId: null });
   }, [focusDayId, trip, itinerary]);
 
-  // Rebuild the marker SET when the places actually shown change — trip,
-  // itinerary, hidden days or the hotel-marker toggle. Deliberately does NOT
-  // depend on `hoveredPlaceId`/focus: on the 100-place sample that would tear
-  // down and recreate ~100 DOM nodes on every mouse-enter (P0 #4). Hover and
-  // keyboard-focus cross-highlighting are handled by the separate effect
-  // below instead, which just toggles a class on the elements built here.
+  // Build markers: dispersed co-located coordinates, priority z-index for active day, no emoji
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !trip) return;
@@ -614,142 +689,119 @@ function MapViewInner() {
     if (tooltipRef.current) tooltipRef.current.hidden = true;
     for (const m of markerRef.current) m.remove();
     elByPlaceId.current.clear();
-    markerRef.current = markersFor(trip, itinerary, showBases)
-      .filter(({ dayId }) => !dayId || !hiddenDays.has(dayId)) // hidden days: no markers
-      .map(({ place, dayIndex, number, color }) => {
-        // Hotels (by category) are the lodging markers — 🛏 glyph, distinct
-        // base styling. `dwellMin === 0` is only the legacy base heuristic.
-        const isHotel = isHotelPlace(place);
-        // P1 #5: a hotel created from the Stays panel at a placeholder
-        // location stays visibly flagged, here and in StaysPanel's stay
-        // rows, until it's actually repositioned — see hotelNeedsLocation.
-        const needsLocation = isHotel && hotelNeedsLocation(place);
-        const el = document.createElement("div");
-        el.className =
-          "map-marker" +
-          (isHotel ? " base" : "") +
-          (!isHotel && dayIndex < 0 ? " unscheduled" : "") +
-          (needsLocation ? " needs-location" : "");
-        // Unscheduled non-hotel places get no inline background at all —
-        // `color` is null for them, so the CSS "unscheduled" (transparent,
-        // dashed) styling shows through instead of being masked.
-        if (color) el.style.background = color;
-        // Scheduled non-hotel markers carry their day's colour as a border
-        // too (a touch darker isn't needed — the surrounding halo border on
-        // every other marker state already comes from --bg-surface, so this
-        // border is what makes a day marker read as one solid coloured
-        // shape rather than a coloured fill with a mismatched grey rim).
-        if (!isHotel && dayIndex >= 0 && color) {
-          el.style.borderColor = color;
-        }
-        if (number !== undefined && !isHotel) {
-          el.textContent = String(number);
+
+    const filtered = markersFor(trip, itinerary, showBases)
+      .filter(({ dayId }) => !dayId || !hiddenDays.has(dayId));
+    const dispersedCoords = disperseOverlappingCoords(filtered);
+
+    markerRef.current = filtered.map(({ place, dayIndex, dayId, number, color }) => {
+      const isHotel = isHotelPlace(place);
+      const needsLocation = isHotel && hotelNeedsLocation(place);
+      const isActiveDay = dayId ? dayId === activeDayId : false;
+
+      const el = document.createElement("div");
+      el.className =
+        "map-marker" +
+        (isHotel ? " base" : "") +
+        (!isHotel && dayIndex < 0 ? " unscheduled" : "") +
+        (!isActiveDay && dayIndex >= 0 ? " inactive-day" : "") +
+        (needsLocation ? " needs-location" : "");
+
+      if (color) el.style.background = color;
+      if (!isHotel && dayIndex >= 0 && color) {
+        el.style.borderColor = color;
+      }
+
+      if (number !== undefined && !isHotel) {
+        el.textContent = String(number);
+      } else {
+        if (isHotel) {
+          el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="none" style="transform: rotate(45deg);"><path d="M1.5 13V5.75a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1V9" stroke="#F7F9F6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M1.5 13v-2.25a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1V13" stroke="#F7F9F6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
         } else {
-          // Hotel markers show a bed glyph (wrapped in a span so the marker's
-          // -45° rotation is counter-acted and the glyph stays upright);
-          // other unscheduled places keep the neutral dot.
           const label = document.createElement("span");
-          label.textContent = isHotel ? "🛏" : "•";
-          label.className = isHotel ? "hotel-glyph" : "";
+          label.textContent = "•";
           el.appendChild(label);
         }
-        // Keyboard/screen-reader access (P0 #3): a bare hover/click-only div
-        // is otherwise entirely inert without a mouse. The day number and
-        // category glyph are visual-only (the glyph badge stays
-        // aria-hidden below), so both have to be folded into the accessible
-        // name instead.
-        el.tabIndex = 0;
-        el.setAttribute("role", "button");
-        const dayLabel = isHotel ? "hotel" : dayIndex >= 0 ? `day ${dayIndex + 1}` : "unscheduled";
-        const needsLocationSuffix = needsLocation ? ", needs a location" : "";
-        el.setAttribute(
-          "aria-label",
-          isHotel
-            ? `${place.name}, hotel${needsLocationSuffix}`
-            : `${place.name}, ${CATEGORY_LABEL[place.category]}, ${dayLabel}`,
-        );
-        const showTooltip = () => {
-          const tooltip = tooltipRef.current;
-          if (!tooltip) return;
-          const pt = map.project([place.lng, place.lat]);
-          tooltip.textContent = isHotel
-            ? `Hotel · ${place.name}${needsLocation ? " — needs a location" : ""}`
-            : place.name + (dayIndex >= 0 ? ` (day ${dayIndex + 1})` : " (unscheduled)");
-          tooltip.style.left = `${pt.x}px`;
-          tooltip.style.top = `${pt.y}px`;
-          tooltip.hidden = false;
-        };
-        const hideTooltip = () => {
-          if (tooltipRef.current) tooltipRef.current.hidden = true;
-        };
-        el.addEventListener("mouseenter", () => {
-          setHovered(place.id);
-          showTooltip();
-        });
-        el.addEventListener("mouseleave", () => {
-          setHovered(null);
-          hideTooltip();
-        });
-        // Keyboard focus drives the same cross-highlighting hover does
-        // (setHovered is the one signal both the map and the timeline read).
-        el.addEventListener("focus", () => {
-          setHovered(place.id);
-          showTooltip();
-        });
-        el.addEventListener("blur", () => {
-          setHovered(null);
-          hideTooltip();
-        });
-        el.addEventListener("click", (e) => {
-          e.stopPropagation();
-          openPlaceEditor(place.id);
-        });
-        el.addEventListener("keydown", (e) => {
-          if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
-          e.preventDefault(); // matches the click handler; also stops the page from scrolling on Space
-          openPlaceEditor(place.id);
-        });
-        // The pin's own -45° rotation (see CSS) has to live on a plain child,
-        // not on the element MapLibre positions: Marker writes its position
-        // transform directly onto the element passed to it, which would
-        // otherwise clobber the CSS rotation. Wrapping also gives the
-        // category badge an unrotated place to sit, independent of the pin.
-        const wrap = document.createElement("div");
-        wrap.className = "map-marker-wrap";
-        // Explicit stacking order (map.css's `:hover`/`:focus-visible` rule
-        // overrides this with a much higher z-index so a hovered/focused
-        // marker still always reliably lifts to the very top): later stops
-        // in a day sit above earlier ones in dense areas, rather than
-        // whichever marker happens to be last in DOM order winning.
-        // Unscheduled/hotel markers (no `number`) fall back to 0.
-        wrap.style.zIndex = String((number ?? 0) * 10);
-        wrap.appendChild(el);
-        if (!isHotel) {
-          const badge = document.createElement("span");
-          badge.className = "map-marker-badge";
-          badge.textContent = CATEGORY_GLYPH[place.category] ?? "•";
-          badge.setAttribute("aria-hidden", "true");
-          wrap.appendChild(badge);
-        } else if (needsLocation) {
-          // Same corner-badge slot the category glyph uses on non-hotel
-          // markers, repurposed here — the accessible name above already
-          // says "needs a location" in words, so this glyph stays decorative.
-          const badge = document.createElement("span");
-          badge.className = "map-marker-badge map-marker-badge-warning";
-          badge.textContent = "❗";
-          badge.setAttribute("aria-hidden", "true");
-          wrap.appendChild(badge);
-        }
-        elByPlaceId.current.set(place.id, el);
-        return new maplibregl.Marker({ element: wrap })
-          .setLngLat([place.lng, place.lat])
-          .addTo(map);
+      }
+
+      el.tabIndex = 0;
+      el.setAttribute("role", "button");
+      const dayLabel = isHotel ? "hotel" : dayIndex >= 0 ? `day ${dayIndex + 1}` : "unscheduled";
+      const needsLocationSuffix = needsLocation ? ", needs a location" : "";
+      el.setAttribute(
+        "aria-label",
+        isHotel
+          ? `${place.name}, hotel${needsLocationSuffix}`
+          : `${place.name}, ${CATEGORY_LABEL[place.category]}, ${dayLabel}`,
+      );
+
+      const [mX, mY] = dispersedCoords.get(place.id) ?? [place.lng, place.lat];
+
+      const showTooltip = () => {
+        const tooltip = tooltipRef.current;
+        if (!tooltip) return;
+        const pt = map.project([mX, mY]);
+        tooltip.textContent = isHotel
+          ? `Hotel · ${place.name}${needsLocation ? " — needs a location" : ""}`
+          : place.name + (dayIndex >= 0 ? ` (day ${dayIndex + 1})` : " (unscheduled)");
+        tooltip.style.left = `${pt.x}px`;
+        tooltip.style.top = `${pt.y}px`;
+        tooltip.hidden = false;
+      };
+      const hideTooltip = () => {
+        if (tooltipRef.current) tooltipRef.current.hidden = true;
+      };
+
+      el.addEventListener("mouseenter", () => {
+        setHovered(place.id);
+        showTooltip();
       });
-    // Apply whatever is currently hovered/focused to the freshly built set —
-    // the highlight effect below won't re-run just because the set changed.
+      el.addEventListener("mouseleave", () => {
+        setHovered(null);
+        hideTooltip();
+      });
+      el.addEventListener("focus", () => {
+        setHovered(place.id);
+        showTooltip();
+      });
+      el.addEventListener("blur", () => {
+        setHovered(null);
+        hideTooltip();
+      });
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openPlaceEditor(place.id);
+      });
+      el.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+        e.preventDefault();
+        openPlaceEditor(place.id);
+      });
+
+      const wrap = document.createElement("div");
+      wrap.className = "map-marker-wrap";
+      // Priority z-index: active day markers render above inactive days
+      const baseZ = isActiveDay ? 500 : dayIndex >= 0 ? 100 : 10;
+      wrap.style.zIndex = String(baseZ + (number ?? 0) * 10);
+      wrap.appendChild(el);
+
+      if (isHotel && needsLocation) {
+        const badge = document.createElement("span");
+        badge.className = "map-marker-badge map-marker-badge-warning";
+        badge.textContent = "!";
+        badge.setAttribute("aria-hidden", "true");
+        wrap.appendChild(badge);
+      }
+
+      elByPlaceId.current.set(place.id, el);
+      return new maplibregl.Marker({ element: wrap })
+        .setLngLat([mX, mY])
+        .addTo(map);
+    });
+
     const currentHover = useStore.getState().hoveredPlaceId;
     if (currentHover) elByPlaceId.current.get(currentHover)?.classList.add("hovered");
-  }, [trip, itinerary, hiddenDays, showBases, setHovered, openPlaceEditor]);
+  }, [trip, itinerary, hiddenDays, showBases, activeDayId, setHovered, openPlaceEditor]);
 
   // Hover/focus cross-highlight (P0 #4): toggle a class on the marker
   // elements the effect above already built, rather than rebuilding them.

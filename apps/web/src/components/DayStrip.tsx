@@ -11,14 +11,17 @@ function shortDate(date: string): string {
 }
 
 /** Crosshair glyph for "focus this day on the map" — inline SVG (currentColor,
- *  stroke-width 1.5, 16px) in place of the 🎯 emoji, which renders as an
+ *  stroke-width 1.5, 14px) in place of the crosshair emoji, which renders as an
  *  illegible smudge at badge scale. */
 function CrosshairIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="8" cy="8" r="4.5" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="8" cy="8" r="1.1" fill="currentColor" />
-      <path d="M8 0.5v2.5M8 13v2.5M0.5 8h2.5M13 8h2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style={{ display: 'block', minWidth: '14px', minHeight: '14px' }}>
+      <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="12" cy="12" r="2.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <line x1="12" y1="2" x2="12" y2="5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="12" y1="19" x2="12" y2="22" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="2" y1="12" x2="5" y2="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="19" y1="12" x2="22" y2="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }

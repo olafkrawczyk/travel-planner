@@ -39,7 +39,14 @@
 .day-header .date { font-weight: 400; color: var(--text-muted); font-size: var(--text-sm); }
 .day-header .icon-btn { background: var(--bg-surface); border-color: var(--border); }
 .day-header .icon-btn.active { background: var(--bg-surface-active); }
-.day-times { font-size: var(--text-sm); color: var(--text-muted); }
+.day-times {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+}
 
 .day-number-badge {
   display: inline-flex;
@@ -106,6 +113,8 @@
   color: var(--danger);
   font-size: var(--text-xs);
   font-weight: 600;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   background: var(--bg-surface);
   padding: 0 var(--space-1);
 }
@@ -161,6 +170,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .track-spine-col {
@@ -199,6 +210,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 0 0 2px var(--bg-surface);
 }
 
 .track-row-body {
@@ -211,19 +223,24 @@
 
 .track-stop {
   position: relative;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
   cursor: grab;
-}
-.track-stop .track-row-body { padding-right: var(--space-2); }
-
-.track-stop.hovered, .track-stop:hover {
-  background: var(--bg-surface-hover);
 }
 
 .track-stop-body {
   gap: var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  align-self: center;
+  min-height: 36px;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.track-stop.hovered .track-stop-body,
+.track-stop:hover .track-stop-body {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-strong);
 }
 .track-stop-body .spacer { flex: 1 1 auto; }
 
@@ -320,11 +337,13 @@
   padding: 0;
   color: var(--text-muted);
   font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
 .leg-minutes:hover, .leg-minutes:focus-visible { color: var(--text); }
 .leg-edit { display: flex; align-items: center; gap: var(--space-1); }
-.leg-edit input { width: 70px; }
+.leg-edit input { width: 70px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .leg-edit-submit { padding: var(--space-1); }
 
 /* Icon-only Google Maps link: revealed on hover/focus of its leg row

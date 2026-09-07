@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "89496d5dd00f4810205f351759594fc2742bf8eea85a2f2b2d1de59f4bd91576"
+    },
+    "playwright-cli": {
+      "source": "microsoft/playwright-cli",
+      "sourceType": "github",
+      "skillPath": "skills/playwright-cli/SKILL.md",
+      "computedHash": "19b6942c9cbcf9b9e3000fc497f8f156b8251d66055de806017e4aaa651e0c7b"
+    },
+    "web-design-guidelines": {
+      "source": "PageAI-Pro/ralph-loop",
+      "sourceType": "github",
+      "skillPath": ".agent/skills/web-design-guidelines/SKILL.md",
+      "computedHash": "b9e85077d55864274b19e19b16e87ecef72cb1685ac5578fa4f3ae89deb45fd4"
+    }
+  }
+}

@@ -99,6 +99,7 @@ function gmapsLink(from: Place | undefined, to: Place | undefined, mode: string)
 function Icon({ children }: { children: ReactNode }) {
   return (
     <svg
+      xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 24 24"
       width={16}
       height={16}
@@ -211,7 +212,7 @@ export function Timeline() {
       {!hasPlaces && (
         <div className="empty-trip-hint hint">
           <strong>No places yet.</strong> Search the map above and add a few — museums, food, a
-          viewpoint, whatever you want to see. Once you've added some, hit Regenerate (⟳ or
+          viewpoint, whatever you want to see. Once you've added some, hit Regenerate (or
           Ctrl+Enter) to build the itinerary.
         </div>
       )}
@@ -223,7 +224,7 @@ export function Timeline() {
             : "your changes are saved"}
           , but new or moved places won't appear here (or in the "couldn't fit" tray) until you
           regenerate.
-          <button onClick={regenerate}>⟳ Regenerate</button>
+          <button onClick={regenerate}>Regenerate</button>
         </div>
       )}
       {trip.days.map((day, dayIndex) => {
@@ -338,7 +339,7 @@ function DaySection(props: {
         </span>
         {plan && plan.slackMin < 0 && (
           <span className="badge badge-danger tnum" title="This day exceeds its end time (e.g. after a force-insert)">
-            ⚠ over by {-plan.slackMin} min
+            over by {-plan.slackMin} min
           </span>
         )}
         <span className="spacer" />

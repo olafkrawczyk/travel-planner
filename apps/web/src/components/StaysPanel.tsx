@@ -1,7 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import type { Place } from "@app/domain";
 import { recommendHotelAreas, type HotelAreaCandidate, type HotelAreaSegment } from "@app/solver";
-import { dayColor, staysFor, useStore, type Stay } from "../store";
+import { staysFor, useStore, type Stay } from "../store";
 import { nightsRange, withCheckIn, withHotel, withNights, withoutStay, withSplitAt } from "../stays";
 
 /**
@@ -66,10 +66,10 @@ export function defaultRecommendationOpen(hotel: Place | undefined): boolean {
 }
 
 /** Bed glyph for a stay row's hotel field — inline SVG (currentColor,
- *  stroke-width 1.5, 16px) in place of the 🛏 emoji. */
+ *  stroke-width 1.5, 16px) in place of the bed emoji. */
 function BedIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path
         d="M1.5 13V5.75a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1V9"
         stroke="currentColor"
@@ -89,6 +89,22 @@ function BedIcon() {
       <path d="M1.5 14.5V13M14.5 14.5V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
+}
+
+/** Close glyph for removing a stay row — inline SVG (currentColor,
+ *  stroke-width 1.75, 12px) in place of unicode cross. */
+function CloseIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function shortDate(dateStr?: string): string {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-");
+  return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : dateStr;
 }
 
 /** Chevron used for every disclosure control in this panel (the "Stays"
@@ -128,7 +144,7 @@ export function StaysPanel() {
   const addHotelForStay = useStore((s) => s.addHotelForStay);
   const setToast = useStore((s) => s.setToast);
   const [open, setOpen] = useState(true);
-  const [splitDay, setSplitDay] = useState<string>("");
+  const [hotelChangeDay, setHotelChangeDay] = useState<string>("");
   if (!trip) return null;
 
   const hotels = trip.places.filter((p) => p.category === "hotel");
@@ -173,7 +189,7 @@ export function StaysPanel() {
         <>
           {hotels.length === 0 && (
             <p className="hint">
-              No hotels yet — use “＋ New hotel” in a stay row below, or mark any place as “This is a hotel” in its editor.
+              No hotels yet — use “+ New hotel” in a stay row below, or mark any place as “This is a hotel” in its editor.
             </p>
           )}
           <CoverageBar stays={stays} places={trip.places} days={days} />
@@ -193,7 +209,18 @@ export function StaysPanel() {
                   <span className="stay-hotel-icon" aria-hidden="true">
                     <BedIcon />
                   </span>
-                  <div className="stay-hotel-cell">
+                  <div className="stay-field stay-hotel-field">
+                    <div className="stay-field-header">
+                      <span className="stay-field-label">Hotel</span>
+                      {hotelNeedsLocation(hotel) && (
+                        <span
+                          className="badge badge-warning"
+                          title={`"${hotel!.name}" was created at a default location — open it on the map or edit it to set its real address.`}
+                        >
+                          needs location
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={stay.hotelId}
                       aria-label={`Hotel of stay ${i + 1}`}
@@ -209,32 +236,30 @@ export function StaysPanel() {
                           </option>
                         ),
                       )}
-                      <option value="__new__">＋ New hotel…</option>
+                      <option value="__new__">+ New hotel…</option>
                     </select>
-                    {hotelNeedsLocation(hotel) && (
-                      <span
-                        className="badge badge-warning"
-                        title={`"${hotel!.name}" was created at a default location — open it (on the map or via ✎ edit) to set its real address.`}
-                      >
-                        needs location
-                      </span>
-                    )}
                   </div>
-                  <label className="stay-field">
-                    <span className="stay-field-label">Check-in</span>
+                  <div className="stay-field stay-checkin-field">
+                    <div className="stay-field-header">
+                      <span className="stay-field-label">Check-in</span>
+                    </div>
                     {i === 0 ? (
-                      <span className="stay-fixed" title="The first stay always starts on day 1">
-                        Day 1 ({dateOf(0)})
+                      <span
+                        className="stay-fixed clock"
+                        title={`The first stay always starts on Day 1 (${dateOf(0)})`}
+                      >
+                        Day 1 ({shortDate(dateOf(0))})
                       </span>
                     ) : checkInFixed ? (
                       <span
-                        className="stay-fixed"
-                        title="No room to move — the neighbouring stays leave no day free to check in on"
+                        className="stay-fixed clock"
+                        title={`No room to move — neighbouring stays leave no day free to check in on (${dateOf(stay.checkInDayIdx)})`}
                       >
-                        Day {stay.checkInDayIdx + 1} ({dateOf(stay.checkInDayIdx)})
+                        Day {stay.checkInDayIdx + 1} ({shortDate(dateOf(stay.checkInDayIdx))})
                       </span>
                     ) : (
                       <select
+                        className="clock"
                         value={stay.checkInDayIdx}
                         aria-label={`Check-in day of stay ${i + 1}`}
                         onChange={(e) => setStays(withCheckIn(stays, i, Number(e.target.value), days))}
@@ -242,15 +267,17 @@ export function StaysPanel() {
                         {Array.from({ length: maxCheckIn - minCheckIn + 1 }, (_, k) => minCheckIn + k).map(
                           (d) => (
                             <option key={d} value={d}>
-                              Day {d + 1} ({dateOf(d)})
+                              Day {d + 1} ({shortDate(dateOf(d))})
                             </option>
                           ),
                         )}
                       </select>
                     )}
-                  </label>
-                  <label className="stay-field">
-                    <span className="stay-field-label">Nights</span>
+                  </div>
+                  <div className="stay-field stay-nights-field">
+                    <div className="stay-field-header">
+                      <span className="stay-field-label">Nights</span>
+                    </div>
                     <NightsInput
                       key={`${stay.checkInDayIdx}-${stay.nights}`}
                       nights={stay.nights}
@@ -261,24 +288,25 @@ export function StaysPanel() {
                         nightsFixed
                           ? stays.length === 1
                             ? "The only stay always covers the whole trip"
-                            : "No room to change — the neighbouring check-in days leave no nights to move"
+                            : "No room to change — neighbouring check-in days leave no nights to move"
                           : undefined
                       }
                       ariaLabel={`Nights of stay ${i + 1}`}
                       onCommit={(n) => setStays(withNights(stays, i, n, days))}
                     />
-                  </label>
+                  </div>
                   {i > 0 ? (
                     <button
                       type="button"
                       className="icon-btn stay-remove-btn"
                       title="Remove this stay (the previous stay covers its nights)"
+                      aria-label={`Remove stay ${i + 1}`}
                       onClick={() => setStays(withoutStay(stays, i))}
                     >
-                      ✕
+                      <CloseIcon />
                     </button>
                   ) : (
-                    <span aria-hidden="true" />
+                    <span className="stay-remove-placeholder" aria-hidden="true" />
                   )}
                   <div className="hotel-area-wrap">
                     <HotelAreaRecommendation
@@ -296,7 +324,11 @@ export function StaysPanel() {
             <div className="stays-actions">
               <label className="stay-field">
                 <span className="stay-field-label">Change hotel starting</span>
-                <select value={splitDay} onChange={(e) => setSplitDay(e.target.value)}>
+                <select
+                  className="clock"
+                  value={hotelChangeDay}
+                  onChange={(e) => setHotelChangeDay(e.target.value)}
+                >
                   <option value="">Day…</option>
                   {Array.from({ length: days - 1 }, (_, k) => k + 1)
                     .filter((d) => {
@@ -308,22 +340,23 @@ export function StaysPanel() {
                     })
                     .map((d) => (
                       <option key={d} value={d}>
-                        Day {d + 1} ({dateOf(d)})
+                        Day {d + 1} ({shortDate(dateOf(d))})
                       </option>
                     ))}
                 </select>
               </label>
               <button
                 type="button"
-                disabled={!splitDay}
+                className="btn-add-change"
+                disabled={!hotelChangeDay}
                 title="This trip changes hotel from that day onward — pick the new hotel in the row that appears"
                 onClick={() => {
-                  if (splitDay) {
-                    const dayIdx = Number(splitDay);
+                  if (hotelChangeDay) {
+                    const dayIdx = Number(hotelChangeDay);
                     setStays(withSplitAt(stays, dayIdx, days));
-                    setToast(`Hotel change added at day ${dayIdx + 1} — pick a different hotel in the new row (or ＋ New hotel).`);
+                    setToast(`Hotel change added at day ${dayIdx + 1} — pick a different hotel in the new row (or + New hotel).`);
                   }
-                  setSplitDay("");
+                  setHotelChangeDay("");
                 }}
               >
                 Add hotel change
@@ -475,11 +508,9 @@ function NightsInput({
   );
 }
 
-/** Horizontal coverage row: one entry per stay, sized by nights, each
- *  carrying a small colour marker (the same day-identity ramp the map uses,
- *  indexed by stay order) so consecutive stays are tellable apart at a
- *  glance — ink-on-surface with a hairline rule, not a saturated full-bleed
- *  fill, with check-in days marked. */
+/** Horizontal coverage row: one entry per stay, sized by nights, with
+ *  ink-on-surface and hairline rules matching the timetable theme.
+ *  Neutral styling ensures the hotel bar is never mistaken for an error. */
 function CoverageBar({ stays, places, days }: { stays: Stay[]; places: Place[]; days: number }) {
   const nameOf = (id: string) => places.find((p) => p.id === id)?.name ?? id;
   return (
@@ -492,8 +523,8 @@ function CoverageBar({ stays, places, days }: { stays: Stay[]; places: Place[]; 
           title={`Day ${s.checkInDayIdx + 1}: check in at ${nameOf(s.hotelId)} for ${s.nights} night${s.nights === 1 ? "" : "s"}`}
         >
           {i > 0 && <span className="checkin-mark" title={`Check-in: day ${s.checkInDayIdx + 1}`} />}
-          <span className="seg-swatch" aria-hidden="true" style={{ background: dayColor(i) }} />
           <span className="seg-label">{nameOf(s.hotelId)}</span>
+          <span className="seg-nights tnum">{s.nights}n</span>
         </div>
       ))}
       {days === 0 && <span className="hint">No days</span>}

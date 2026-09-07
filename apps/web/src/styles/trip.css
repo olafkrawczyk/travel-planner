@@ -25,7 +25,13 @@
 }
 .import-row { margin-top: var(--space-4); }
 
-.trip-screen { display: flex; flex-direction: column; height: 100dvh; }
+.trip-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
 
 /* Header: one flex row, every direct control the same 40px height, centred
  * on a shared baseline. A hairline rule (not a shadow) separates it from the
@@ -38,6 +44,7 @@
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-strong);
   min-height: 40px;
+  box-sizing: border-box;
 }
 .trip-header > * { flex-shrink: 0; }
 
@@ -51,6 +58,7 @@
 .trip-actions button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
 }
 
@@ -88,9 +96,19 @@
   align-items: baseline;
   gap: var(--space-1);
   line-height: 1.1;
+  white-space: nowrap;
 }
-.stat-value { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
-.stat-label { font-size: var(--text-xs); color: var(--text-muted); }
+.stat-value {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
 
 /* Travel-mode segmented control (radiogroup) — replaces the old bare
  * checkbox. Two options, ink-only distinction (no invented accent hue): the

@@ -1,3 +1,10 @@
 [      90ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5174/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550
 [    7405ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/925c3adc-a9e3-4e11-8131-68a355208e2b:2460
 [    7405ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/925c3adc-a9e3-4e11-8131-68a355208e2b:2460
+[ 3152642ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5174/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550
+[ 3215704ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/1b916ab0-544a-489f-b602-9eef60c89d2e:2460
+[ 3215705ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/1b916ab0-544a-489f-b602-9eef60c89d2e:2460
+[ 3215705ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/1b916ab0-544a-489f-b602-9eef60c89d2e:2460
+[ 3242083ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/1b916ab0-544a-489f-b602-9eef60c89d2e:2460
+[ 3242083ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/1b916ab0-544a-489f-b602-9eef60c89d2e:2460
+[ 3242083ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/1b916ab0-544a-489f-b602-9eef60c89d2e:2460
