@@ -1,6 +1,5 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import type { Place } from "@app/domain";
-import { recommendHotelAreas, type HotelAreaCandidate, type HotelAreaSegment } from "@app/solver";
 import { staysFor, useStore, type Stay } from "../store";
 import { nightsRange, withCheckIn, withHotel, withNights, withoutStay, withSplitAt } from "../stays";
 
@@ -37,6 +36,32 @@ export function formatRadiusKm(radiusKm: number): string {
  *  at-a-glance figure shown alongside it. */
 export function formatAvgOneWayMin(avgOneWayMin: number): string {
   return `~${Math.round(avgOneWayMin)} min avg one-way`;
+}
+
+/** `"Save ~45 min"` — rounded to nearest minute. */
+export function formatSavingsMin(savingsMin: number): string {
+  return `Save ~${Math.round(savingsMin)} min`;
+}
+
+/**
+ * The compact badge text for a suggested base. A capacity-expander suggestion
+ * must never render `savingsMin` (it is typically negative for that kind —
+ * visiting rescued places adds travel), so it gets a rescued-places badge
+ * instead. Route-aware transit-saver suggestions may also land slightly
+ * negative (within the permissive 60-minute regression allowance — see
+ * `route-aware-base-suggestions` design.md Decision 4) while still easing
+ * commutes, so those get a commute-relief badge rather than a nonsensical
+ * negative "Save ~-40 min"; genuine savers keep the savings figure.
+ */
+export function suggestedBaseBadgeText(base: { kind: "transit-saver" | "capacity-expander"; savingsMin: number; rescuedCount: number }): string {
+  if (base.kind === "capacity-expander") {
+    const n = base.rescuedCount;
+    return `Visit ${n} more place${n === 1 ? "" : "s"}`;
+  }
+  if (base.savingsMin <= 0) {
+    return "Commute relief";
+  }
+  return formatSavingsMin(base.savingsMin);
 }
 
 /**
@@ -143,6 +168,9 @@ export function StaysPanel() {
   const setStays = useStore((s) => s.setStays);
   const addHotelForStay = useStore((s) => s.addHotelForStay);
   const setToast = useStore((s) => s.setToast);
+  const suggestedBases = useStore((s) => s.suggestedBases);
+  const applySuggestedBase = useStore((s) => s.applySuggestedBase);
+  const dismissSuggestedBase = useStore((s) => s.dismissSuggestedBase);
   const [open, setOpen] = useState(true);
   const [hotelChangeDay, setHotelChangeDay] = useState<string>("");
   if (!trip) return null;
@@ -151,20 +179,6 @@ export function StaysPanel() {
   const stays = staysFor(trip);
   const days = trip.days.length;
   const dateOf = (idx: number) => trip.days[idx]?.date;
-  // Index-aligned with `stays` (both derive segments from the same
-  // stayStart/baseEndId day fields — see design.md decision 3/10 of
-  // add-hotel-area-recommendation). Unlike `staysFor` (a cheap array walk),
-  // this runs Weiszfeld iterations plus a k-means split per stay segment —
-  // real work, so it's memoized against exactly the inputs that affect its
-  // result (places, day/stay structure, and the settings its travel-time
-  // estimate reads), not the whole `trip` object, which gets a new identity
-  // on every unrelated edit (immer's `produce` still gives unaffected nested
-  // fields — `places`/`days`/`settings` — stable references across those, so
-  // this only recomputes when one of them actually changes).
-  const hotelAreas = useMemo(
-    () => recommendHotelAreas(trip),
-    [trip.places, trip.days, trip.settings],
-  );
 
   /** Create a new hotel place and assign it to stay `idx` in one undoable
    *  mutation. The user repositions it via the place editor. */
@@ -187,6 +201,60 @@ export function StaysPanel() {
       </button>
       {open && (
         <>
+          {suggestedBases.length > 0 && (
+            <div className="suggested-bases-section" data-testid="suggested-bases">
+              <div className="suggested-bases-header">
+                <h4>Suggested Bases</h4>
+                <span className="hint">Verified suggestions</span>
+              </div>
+              <ul className="suggested-bases-list">
+                {suggestedBases.map((base) => (
+                  <li key={base.id} className="suggested-base-card" data-testid={`suggested-base-${base.id}`}>
+                    <div className="suggested-base-main">
+                      <div className="suggested-base-title-row">
+                        <strong>{base.label}</strong>
+                        <span className="badge badge-success">
+                          {suggestedBaseBadgeText(base)}
+                        </span>
+                      </div>
+                      <div className="suggested-base-meta hint">
+                        <span>{base.suggestedNights} night{base.suggestedNights === 1 ? "" : "s"} recommended</span>
+                        <span>{formatRadiusKm(base.radiusKm)}</span>
+                      </div>
+                      <p className="suggested-base-rationale">{base.rationale}</p>
+                    </div>
+                    <div className="suggested-base-actions">
+                      <button
+                        type="button"
+                        className="btn-apply-base"
+                        onClick={() => applySuggestedBase(base)}
+                        aria-label={`Apply ${base.label} as a new base`}
+                      >
+                        Apply base
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-dismiss-base"
+                        onClick={() => dismissSuggestedBase(base.id)}
+                        aria-label={`Dismiss recommendation for ${base.label}`}
+                      >
+                        Dismiss
+                      </button>
+                      <a
+                        className="gmaps-link"
+                        href={gmapsHotelSearchLink(base.center.lat, base.center.lng)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Search hotels near here on Google Maps (opens in a new tab)"
+                      >
+                        Search hotels here
+                      </a>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {hotels.length === 0 && (
             <p className="hint">
               No hotels yet — use “+ New hotel” in a stay row below, or mark any place as “This is a hotel” in its editor.
@@ -308,14 +376,6 @@ export function StaysPanel() {
                   ) : (
                     <span className="stay-remove-placeholder" aria-hidden="true" />
                   )}
-                  <div className="hotel-area-wrap">
-                    <HotelAreaRecommendation
-                      key={`area-${stay.checkInDayIdx}-${stay.hotelId}`}
-                      idx={i}
-                      segment={hotelAreas[i]}
-                      hotel={hotel}
-                    />
-                  </div>
                 </li>
               );
             })}
@@ -366,88 +426,6 @@ export function StaysPanel() {
         </>
       )}
     </section>
-  );
-}
-
-/**
- * One stay row's hotel-area recommendation: up to 3 ranked "search here"
- * candidates (center/radius/rationale/avg one-way minutes), each with a
- * one-click "Use this area" (→ `addHotelForStay(idx, undefined, {lat, lng})`,
- * the same undoable-mutation path `addNewHotel` uses, just with a deliberate
- * location) and an outbound Google Maps search link. Collapsed by default
- * once the stay already has a real (non-placeholder) hotel location, so it
- * doesn't clutter the panel for a stay that no longer needs it — still
- * reachable via the `<summary>` toggle. Renders nothing when there is no
- * segment to show (shouldn't happen given `recommendHotelAreas` is always
- * index-aligned with `staysFor`, but keeps this defensive).
- */
-function HotelAreaRecommendation({
-  idx,
-  segment,
-  hotel,
-}: {
-  idx: number;
-  segment: HotelAreaSegment | undefined;
-  hotel: Place | undefined;
-}) {
-  const addHotelForStay = useStore((s) => s.addHotelForStay);
-  const setToast = useStore((s) => s.setToast);
-  const [open, setOpen] = useState(defaultRecommendationOpen(hotel));
-  if (!segment) return null;
-
-  function useThisArea(candidate: HotelAreaCandidate) {
-    const id = addHotelForStay(idx, undefined, { lat: candidate.lat, lng: candidate.lng });
-    if (!id) return;
-    const name = useStore.getState().currentTrip?.places.find((p) => p.id === id)?.name ?? "Hotel";
-    // Unlike addNewHotel's placeholder-location toast, this location was
-    // deliberately chosen — the copy (and the absence of a "needs location"
-    // badge on the row) should reflect that.
-    setToast(`Hotel "${name}" added ${candidate.label.toLowerCase()} — search hotels there to pick a real one.`);
-  }
-
-  if (segment.candidates.length === 0) {
-    return <p className="hint hotel-area-hint">{segment.note}</p>;
-  }
-
-  return (
-    <details className="hotel-area" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary>
-        <ChevronIcon open={open} className="hotel-area-chevron" />
-        Hotel area suggestions
-      </summary>
-      <ul className="hotel-area-candidates">
-        {segment.candidates.map((c, ci) => (
-          <li key={ci} className="hotel-area-candidate">
-            <div className="hotel-area-candidate-main">
-              <strong>{c.label}</strong>
-              <span className="hint hotel-area-meta">
-                <span>{formatRadiusKm(c.radiusKm)}</span>
-                <span>{formatAvgOneWayMin(c.avgOneWayMin)}</span>
-              </span>
-              <p className="hotel-area-rationale">{c.rationale}</p>
-            </div>
-            <div className="hotel-area-candidate-actions">
-              <button
-                type="button"
-                aria-label={`Use ${c.label} as the hotel area for stay ${idx + 1}`}
-                onClick={() => useThisArea(c)}
-              >
-                Use this area
-              </button>
-              <a
-                className="gmaps-link"
-                href={gmapsHotelSearchLink(c.lat, c.lng)}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Search hotels near here on Google Maps (opens in a new tab)"
-              >
-                Search hotels here
-              </a>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </details>
   );
 }
 

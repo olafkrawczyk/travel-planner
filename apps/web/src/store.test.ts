@@ -7,6 +7,8 @@ vi.mock("./worker/solverClient", () => ({
   solverClient: {
     solve: vi.fn(() => new Promise(() => {})),
     resolve: vi.fn(() => new Promise(() => {})),
+    evaluateBaseSuggestions: vi.fn(() => Promise.resolve([])),
+    cancelShadowSolves: vi.fn(),
   },
 }));
 vi.mock("@app/storage", () => ({
@@ -50,9 +52,11 @@ vi.mock("@app/storage", () => ({
 }));
 
 import type { Itinerary } from "@app/domain";
+import { findExternalClusters, evaluateBaseSuggestions, solve, type SuggestedBase } from "@app/solver";
 import { LocalRepository } from "@app/storage";
 import { multiHotelSampleTrip, emptyTrip, dateRange, MAX_TRIP_DAYS } from "./tripFactory";
 import { tokyoHakoneSample } from "./samples/tokyo-hakone";
+import { tokyoGrandSample } from "./samples/tokyo-grand";
 import { staysFor, useStore, validateStays, type Stay } from "./store";
 import { withSplitAt } from "./stays";
 import { solverClient } from "./worker/solverClient";
@@ -277,6 +281,164 @@ describe("addHotelForStay", () => {
     const placeholderId = useStore.getState().addHotelForStay(0);
     const placeholder = useStore.getState().currentTrip!.places.find((p) => p.id === placeholderId);
     expect(hotelNeedsLocation(placeholder)).toBe(true);
+  });
+});
+
+describe("suggested bases (applySuggestedBase / dismissSuggestedBase)", () => {
+  function tokyoHakoneTrip() {
+    return multiHotelSampleTrip(tokyoHakoneSample, "2026-04-01");
+  }
+
+  function sampleSuggestedBase(): SuggestedBase {
+    return {
+      id: "sug_hakone",
+      clusterId: "cluster-2",
+      label: "Near Hakone Shrine",
+      center: { lat: 35.2, lng: 139.02 },
+      radiusKm: 2.5,
+      candidateHotel: {
+        id: "hotel_candidate_cluster-2",
+        name: "Hotel Near Hakone Shrine",
+        lat: 35.2,
+        lng: 139.02,
+        category: "hotel",
+        dwellMin: 0,
+        priority: 3,
+        notes: "Located from a hotel-area recommendation.",
+      },
+      suggestedStays: [
+        { hotelId: "p_tokyo_base", checkInDayIdx: 0, nights: 3 },
+        { hotelId: "hotel_candidate_cluster-2", checkInDayIdx: 3, nights: 2 },
+      ],
+      suggestedNights: 2,
+      baselineTravelMin: 240,
+      candidateTravelMin: 120,
+      savingsMin: 120,
+      rationale: "Saves ~120 min transit across 2 nights.",
+      kind: "transit-saver",
+      rescuedCount: 0,
+    };
+  }
+
+  it("applies a suggested base: adds the located hotel, writes the stays, and clears the suggestion", () => {
+    const trip = tokyoHakoneTrip();
+    const initialPlacesCount = trip.places.length;
+    const suggestion = sampleSuggestedBase();
+
+    useStore.setState({
+      currentTrip: trip,
+      past: [],
+      future: [],
+      suggestedBases: [suggestion],
+    });
+
+    useStore.getState().applySuggestedBase(suggestion);
+
+    const nextTrip = useStore.getState().currentTrip!;
+    expect(nextTrip.places).toHaveLength(initialPlacesCount + 1);
+
+    // Hotel must be created at recommended location
+    const newHotel = nextTrip.places.find((p) => p.name === "Hotel Near Hakone Shrine")!;
+    expect(newHotel).toBeDefined();
+    expect(newHotel.lat).toBe(35.2);
+    expect(newHotel.lng).toBe(139.02);
+    expect(newHotel.category).toBe("hotel");
+    expect(hotelNeedsLocation(newHotel)).toBe(false);
+
+    // Stays must reflect the candidate stay schedule
+    const stays = staysFor(nextTrip);
+    expect(stays).toHaveLength(2);
+    expect(stays[0]!.nights).toBe(3);
+    expect(stays[1]!.nights).toBe(2);
+    expect(stays[1]!.hotelId).toBe(newHotel.id);
+    expect(stays[1]!.checkInDayIdx).toBe(3);
+
+    // Suggestion must be cleared from state
+    expect(useStore.getState().suggestedBases).toEqual([]);
+    // Undo step pushed
+    expect(useStore.getState().past).toHaveLength(1);
+  });
+
+  it("applies a capacity-expander suggested base identically to a transit-saver base", () => {
+    const trip = tokyoHakoneTrip();
+    const initialPlacesCount = trip.places.length;
+    const expanderSuggestion: SuggestedBase = {
+      ...sampleSuggestedBase(),
+      id: "sug_expander",
+      kind: "capacity-expander",
+      rescuedCount: 5,
+      savingsMin: -40,
+      rationale: "Lets you fit 5 more places.",
+    };
+
+    useStore.setState({
+      currentTrip: trip,
+      past: [],
+      future: [],
+      suggestedBases: [expanderSuggestion],
+    });
+
+    useStore.getState().applySuggestedBase(expanderSuggestion);
+
+    const nextTrip = useStore.getState().currentTrip!;
+    expect(nextTrip.places).toHaveLength(initialPlacesCount + 1);
+
+    const newHotel = nextTrip.places.find((p) => p.name === "Hotel Near Hakone Shrine")!;
+    expect(newHotel).toBeDefined();
+    expect(newHotel.lat).toBe(35.2);
+    expect(newHotel.lng).toBe(139.02);
+    expect(newHotel.category).toBe("hotel");
+
+    const stays = staysFor(nextTrip);
+    expect(stays).toHaveLength(2);
+    expect(stays[1]!.hotelId).toBe(newHotel.id);
+
+    expect(useStore.getState().suggestedBases).toEqual([]);
+    expect(useStore.getState().past).toHaveLength(1);
+  });
+
+  it("dismisses a suggested base without modifying the trip", () => {
+    const trip = tokyoHakoneTrip();
+    const suggestion = sampleSuggestedBase();
+
+    useStore.setState({
+      currentTrip: trip,
+      suggestedBases: [suggestion],
+    });
+
+    useStore.getState().dismissSuggestedBase(suggestion.id);
+    expect(useStore.getState().suggestedBases).toEqual([]);
+    expect(useStore.getState().currentTrip).toBe(trip);
+  });
+
+  it("suggests Tokyo base when Tokyo 100 places have an active hotel in Yokohama", () => {
+    const trip = multiHotelSampleTrip(tokyoGrandSample, "2026-04-01");
+    // Add Yokohama hotel
+    const yokohamaHotel = {
+      id: "hotelYokohama",
+      name: "Yokohama Bay Hotel",
+      lat: 35.455,
+      lng: 139.631,
+      category: "hotel" as const,
+      dwellMin: 0,
+      priority: 3 as const,
+    };
+    trip.places.push(yokohamaHotel);
+    // Point all days to Yokohama as active base
+    for (const d of trip.days) {
+      d.baseStartId = yokohamaHotel.id;
+      d.baseEndId = yokohamaHotel.id;
+      delete d.stayStart;
+    }
+
+    const external = findExternalClusters(trip);
+    expect(external.length).toBeGreaterThanOrEqual(1);
+
+    const baseline = solve({ trip, seed: 42, budgetMs: 50 });
+    const suggestions = evaluateBaseSuggestions(trip, baseline, { seed: 42, budgetMs: 50 });
+    expect(suggestions.length).toBeGreaterThanOrEqual(1);
+    expect(suggestions[0]!.savingsMin).toBeGreaterThanOrEqual(45);
+    expect(suggestions[0]!.label).toBeDefined();
   });
 });
 

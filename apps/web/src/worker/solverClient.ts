@@ -1,6 +1,6 @@
 import * as Comlink from "comlink";
 import type { Itinerary, Trip } from "@app/domain";
-import type { Edit } from "@app/solver";
+import type { Edit, SuggestedBase } from "@app/solver";
 import { bridgeLog, solverLogEnabled } from "./log";
 import type { SolveApi, SolveRequest } from "./solver.worker";
 
@@ -376,6 +376,33 @@ export const solverClient = {
       bridgeLog("main→worker resolve FAILED", { error: String(e) });
       throw e;
     }
+  },
+  evaluateBaseSuggestions(
+    jobId: number,
+    trip: Trip,
+    baselineItinerary: Itinerary,
+    req: SolveRequest,
+  ): Promise<SuggestedBase[]> {
+    if (solverLogEnabled()) {
+      bridgeLog("main→worker evaluateBaseSuggestions request", {
+        jobId,
+        tripId: trip.id,
+        places: trip.places.length,
+      });
+    }
+    if (!remote) {
+      return Promise.resolve([]);
+    }
+    try {
+      return guardCall(remote.evaluateBaseSuggestions(jobId, trip, baselineItinerary, req));
+    } catch (e) {
+      bridgeLog("main→worker evaluateBaseSuggestions FAILED", { error: String(e) });
+      return Promise.resolve([]);
+    }
+  },
+  cancelShadowSolves(jobId?: number): void {
+    if (!remote) return;
+    void remote.cancelShadowSolves(jobId);
   },
 };
 

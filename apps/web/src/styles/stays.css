@@ -278,3 +278,107 @@
   flex-wrap: wrap;
   flex-shrink: 0;
 }
+
+/* Suggested Bases top-level section */
+.suggested-bases-section {
+  margin: var(--space-2) 0 var(--space-3);
+  padding: var(--space-2);
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.suggested-bases-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.suggested-bases-header h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.suggested-bases-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.suggested-base-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+}
+
+.suggested-base-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.suggested-base-meta {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  margin-top: 2px;
+}
+
+.suggested-base-meta > span + span {
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-2);
+}
+
+.suggested-base-rationale {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.suggested-base-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+.btn-apply-base {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-apply-base:hover {
+  background: var(--accent-hover);
+}
+
+.btn-dismiss-base {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.btn-dismiss-base:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text);
+}

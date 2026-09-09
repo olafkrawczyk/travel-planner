@@ -11,7 +11,7 @@ import {
 } from "@app/domain";
 import { LocalRepository, DexieMatrixCache, matrixCacheKey, type MatrixCache } from "@app/storage";
 import { MemoryGeoCache, PhotonClient, OsrmClient, OverpassClient, expandOpeningHours } from "@app/geo";
-import { apiMatrixCoords, type Edit } from "@app/solver";
+import { apiMatrixCoords, type Edit, type SuggestedBase } from "@app/solver";
 import { applyAutoCluster } from "./clustering";
 import { solverClient } from "./worker/solverClient";
 import { bridgeLog } from "./worker/log";
@@ -211,6 +211,12 @@ export interface StoreState {
    *  the hotel is created at that deliberate location instead and is NOT
    *  flagged as needing a location. */
   addHotelForStay(idx: number, name?: string, location?: { lat: number; lng: number }): string | null;
+  /** Suggested bases verified via background shadow solves. */
+  suggestedBases: SuggestedBase[];
+  /** Dismiss one suggested base. */
+  dismissSuggestedBase(id: string): void;
+  /** Apply a suggested base to the trip. */
+  applySuggestedBase(suggestion: SuggestedBase): void;
   updateFlags(partial: Partial<Flags>): void;
   toggleDevPanel(open?: boolean): void;
   setToast(message: string | null): void;
@@ -349,15 +355,34 @@ export const useStore = create<StoreState>((set, get) => {
     }
 
     const call = ++resolveCounter;
+    solverClient.cancelShadowSolves(call);
     // This solve covers the trip as it stands right now, so any edits
     // pending before it are no longer "not yet planned".
-    set({ solving: true, dirty: false, pendingChanges: 0 });
+    set({ solving: true, dirty: false, pendingChanges: 0, suggestedBases: [] });
     bridgeLog("main: requestSolve", { tripId: currentTrip.id, edit: edit.type });
     const onProgress = (partial: Itinerary) => {
       if (call === resolveCounter) set({ itinerary: partial });
     };
     const onDone = (final: Itinerary) => {
-      if (call === resolveCounter) set({ itinerary: final, solving: false });
+      if (call === resolveCounter) {
+        set({ itinerary: final, solving: false });
+        // Background shadow solves for base recommendations on full Regenerate
+        if (edit.type === "full" || !itinerary) {
+          solverClient
+            .evaluateBaseSuggestions(call, currentTrip, final, {
+              seed: 42,
+              budgetMs: 100,
+            })
+            .then((suggestions) => {
+              if (call === resolveCounter) {
+                set({ suggestedBases: suggestions });
+              }
+            })
+            .catch((e) => {
+              bridgeLog("main: evaluateBaseSuggestions error", { error: String(e) });
+            });
+        }
+      }
     };
     if (edit.type === "full" || !itinerary) {
       solverClient
@@ -472,6 +497,7 @@ export const useStore = create<StoreState>((set, get) => {
     toasts: [],
     dirty: false,
     pendingChanges: 0,
+    suggestedBases: [],
 
     async init() {
       try {
@@ -590,6 +616,7 @@ export const useStore = create<StoreState>((set, get) => {
 
     closeTrip() {
       resolveCounter++; // invalidate in-flight solves
+      solverClient.cancelShadowSolves();
       set({
         currentTrip: null,
         currentTripRev: null,
@@ -599,6 +626,7 @@ export const useStore = create<StoreState>((set, get) => {
         dirty: false,
         pendingChanges: 0,
         solving: false,
+        suggestedBases: [],
       });
     },
 
@@ -865,6 +893,41 @@ export const useStore = create<StoreState>((set, get) => {
         applyStaysToDays(draft, withHotel(staysFor(draft), idx, id));
       });
       return id;
+    },
+
+    dismissSuggestedBase(id) {
+      set((s) => ({
+        suggestedBases: s.suggestedBases.filter((b) => b.id !== id),
+      }));
+    },
+
+    applySuggestedBase(suggestion) {
+      const { currentTrip } = get();
+      if (!currentTrip) return;
+      const id = newPlaceId();
+      get().mutateTrip((draft) => {
+        const hotel: Place = {
+          id,
+          name: suggestion.candidateHotel.name,
+          lat: suggestion.center.lat,
+          lng: suggestion.center.lng,
+          category: "hotel",
+          dwellMin: 0,
+          priority: 3,
+          notes: "Located from a hotel-area recommendation.",
+        };
+        draft.places.push(hotel);
+        const updatedStays = suggestion.suggestedStays.map((s) => ({
+          hotelId: s.hotelId === suggestion.candidateHotel.id ? id : s.hotelId,
+          checkInDayIdx: s.checkInDayIdx,
+          nights: s.nights,
+        }));
+        applyStaysToDays(draft, updatedStays);
+      });
+      set((s) => ({
+        suggestedBases: s.suggestedBases.filter((b) => b.id !== suggestion.id),
+      }));
+      requestSolve({ type: "full" });
     },
 
     updateFlags(partial) {

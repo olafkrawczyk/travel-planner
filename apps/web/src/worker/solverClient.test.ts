@@ -55,6 +55,22 @@ beforeAll(async () => {
       onDone?.(sampleItinerary);
       return sampleItinerary;
     },
+    resolve(
+      _trip: unknown,
+      _prev: unknown,
+      _edit: unknown,
+      _req: unknown,
+      onProgress?: (it: Itinerary) => void,
+      onDone?: (it: Itinerary) => void,
+    ) {
+      onProgress?.(sampleItinerary);
+      onDone?.(sampleItinerary);
+      return sampleItinerary;
+    },
+    evaluateBaseSuggestions() {
+      return [];
+    },
+    cancelShadowSolves() {},
   };
   Comlink.expose(fakeApi, workerSidePort);
 

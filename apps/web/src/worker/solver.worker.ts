@@ -1,6 +1,12 @@
 import * as Comlink from "comlink";
 import type { Itinerary, Trip } from "@app/domain";
-import { solve as solveTrip, resolve as resolveTrip, type Edit } from "@app/solver";
+import {
+  solve as solveTrip,
+  resolve as resolveTrip,
+  evaluateBaseSuggestions,
+  type Edit,
+  type SuggestedBase,
+} from "@app/solver";
 import { bridgeLog } from "./log";
 
 /** Pure data — callbacks are passed as separate top-level (proxied) arguments. */
@@ -40,10 +46,20 @@ export interface SolveApi {
     onProgress?: (itinerary: Itinerary) => void,
     onDone?: (itinerary: Itinerary) => void,
   ): Promise<Itinerary>;
+  evaluateBaseSuggestions(
+    jobId: number,
+    trip: Trip,
+    baselineItinerary: Itinerary,
+    req: SolveRequest,
+  ): Promise<SuggestedBase[]>;
+  cancelShadowSolves(jobId?: number): void;
 }
 
 /** Worker-side logging flag, pushed from the main thread. */
 let logging = false;
+
+/** Active shadow solve job ID for background base evaluation. */
+let activeShadowJobId = 0;
 
 /**
  * Freeze a structured clone so the solver receives an immutable snapshot.
@@ -139,6 +155,48 @@ const api: SolveApi = {
       return result;
     } catch (e) {
       bridgeLog("worker: resolve error", {
+        error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+      });
+      throw e;
+    }
+  },
+  cancelShadowSolves(jobId) {
+    if (jobId === undefined || jobId >= activeShadowJobId) {
+      if (logging) bridgeLog("worker: cancelShadowSolves", { jobId, activeShadowJobId });
+      activeShadowJobId = 0;
+    }
+  },
+  async evaluateBaseSuggestions(jobId, trip, baselineItinerary, req) {
+    activeShadowJobId = jobId;
+    if (logging) {
+      bridgeLog("worker: evaluateBaseSuggestions start", {
+        jobId,
+        tripId: trip.id,
+        places: trip.places.length,
+      });
+    }
+    try {
+      const frozenTrip = clone(trip);
+      const frozenItin = clone(baselineItinerary);
+      const signal = {
+        get aborted() {
+          return activeShadowJobId !== jobId;
+        },
+      };
+      const suggestions = evaluateBaseSuggestions(frozenTrip, frozenItin, {
+        seed: req.seed ?? 42,
+        budgetMs: req.budgetMs ?? 100,
+        signal,
+      });
+      if (logging) {
+        bridgeLog("worker: evaluateBaseSuggestions done", {
+          jobId,
+          count: suggestions.length,
+        });
+      }
+      return suggestions;
+    } catch (e) {
+      bridgeLog("worker: evaluateBaseSuggestions error", {
         error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
       });
       throw e;

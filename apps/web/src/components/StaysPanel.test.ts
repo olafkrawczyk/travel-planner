@@ -4,8 +4,10 @@ import {
   defaultRecommendationOpen,
   formatAvgOneWayMin,
   formatRadiusKm,
+  formatSavingsMin,
   gmapsHotelSearchLink,
   hotelNeedsLocation,
+  suggestedBaseBadgeText,
 } from "./StaysPanel";
 
 // Pure-logic coverage for the "needs a location" hotel detector (P1 #5). No
@@ -76,6 +78,40 @@ describe("formatAvgOneWayMin", () => {
 
   it("handles zero", () => {
     expect(formatAvgOneWayMin(0)).toBe("~0 min avg one-way");
+  });
+});
+
+describe("formatSavingsMin", () => {
+  it("formats rounded savings with Save ~ prefix", () => {
+    expect(formatSavingsMin(45.2)).toBe("Save ~45 min");
+    expect(formatSavingsMin(59.8)).toBe("Save ~60 min");
+    expect(formatSavingsMin(0)).toBe("Save ~0 min");
+  });
+});
+
+describe("suggestedBaseBadgeText (kind-dependent badge)", () => {
+  it("renders rescued-places text for capacity-expander suggestions (never savingsMin)", () => {
+    expect(
+      suggestedBaseBadgeText({ kind: "capacity-expander", savingsMin: -120, rescuedCount: 12 }),
+    ).toBe("Visit 12 more places");
+    expect(
+      suggestedBaseBadgeText({ kind: "capacity-expander", savingsMin: -30, rescuedCount: 1 }),
+    ).toBe("Visit 1 more place");
+  });
+
+  it("renders the savings badge for transit-saver suggestions", () => {
+    expect(suggestedBaseBadgeText({ kind: "transit-saver", savingsMin: 120, rescuedCount: 0 })).toBe(
+      "Save ~120 min",
+    );
+  });
+
+  it("renders a commute-relief badge for slightly-negative transit-saver suggestions (route-aware regression allowance)", () => {
+    expect(
+      suggestedBaseBadgeText({ kind: "transit-saver", savingsMin: -40, rescuedCount: 0 }),
+    ).toBe("Commute relief");
+    expect(
+      suggestedBaseBadgeText({ kind: "transit-saver", savingsMin: 0, rescuedCount: 0 }),
+    ).toBe("Commute relief");
   });
 });
 
