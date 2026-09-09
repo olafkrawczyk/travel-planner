@@ -1,0 +1,11 @@
+[10341067ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5173/dc8eee35-1c8e-495a-8d7e-4cbf4591f95b:2460
+[10341071ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5173/dc8eee35-1c8e-495a-8d7e-4cbf4591f95b:2460
+[10341072ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5173/dc8eee35-1c8e-495a-8d7e-4cbf4591f95b:2460
+[11537681ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:559
+[11538595ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550
+[11865465ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:559
+[11865728ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550
+[54766510ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:559
+[54766829ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550
+[75060558ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:559
+[75061050ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550

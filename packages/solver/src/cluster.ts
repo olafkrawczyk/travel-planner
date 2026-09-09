@@ -1,12 +1,18 @@
-import type { Place } from "@app/domain";
+import type { Day, Place } from "@app/domain";
 import { parseHHMM } from "@app/domain";
 import { haversineKm } from "@app/geo";
+import type { Problem } from "./matrix";
+import { giantTour } from "./giantTour";
+import { split } from "./split";
 
 export interface Cluster {
   id: string;
   places: Place[];
   centroid: { lat: number; lng: number };
+  adjacentRegions: Set<string>;
 }
+
+export const DEFAULT_ADJACENCY_THRESHOLD_KM = 3;
 
 /**
  * Groups places into geographic clusters, strictly by `Place.region` (per
@@ -30,8 +36,18 @@ export interface Cluster {
  * unmovable, un-shareable single-place "district" once combined with that
  * protection, and any day mixing several unregioned places would read as
  * maximally region-mixed; keeping the two concepts separate avoids that.
+ *
+ * Also computes each cluster's `adjacentRegions`: other cluster ids whose
+ * centroid is within `thresholdKm` of this one's (per `design.md` Decision
+ * 3 in the refine-cluster-first change) — a small, deliberately
+ * conservative spatial slack so `alns.ts`'s `regionCompatible` can treat
+ * near-neighbour districts (e.g. Shibuya/Harajuku) as shareable without
+ * degenerating into unrestricted cross-region mixing.
  */
-export function clusterPlaces(places: Place[]): Cluster[] {
+export function clusterPlaces(
+  places: Place[],
+  thresholdKm: number = DEFAULT_ADJACENCY_THRESHOLD_KM,
+): Cluster[] {
   const clusters = new Map<string, Place[]>();
   let nextDerivedId = 1;
 
@@ -41,7 +57,7 @@ export function clusterPlaces(places: Place[]): Cluster[] {
     clusters.get(r)!.push(p);
   }
 
-  return Array.from(clusters.entries()).map(([id, group]) => {
+  const result: Cluster[] = Array.from(clusters.entries()).map(([id, group]) => {
     let latSum = 0;
     let lngSum = 0;
     for (const p of group) {
@@ -55,12 +71,33 @@ export function clusterPlaces(places: Place[]): Cluster[] {
         lat: latSum / group.length,
         lng: lngSum / group.length,
       },
+      adjacentRegions: new Set<string>(),
     };
   });
+
+  for (let i = 0; i < result.length; i++) {
+    const c1 = result[i]!;
+    for (let j = i + 1; j < result.length; j++) {
+      const c2 = result[j]!;
+      const dist = haversineKm(c1.centroid.lat, c1.centroid.lng, c2.centroid.lat, c2.centroid.lng);
+      if (dist <= thresholdKm) {
+        c1.adjacentRegions.add(c2.id);
+        c2.adjacentRegions.add(c1.id);
+      }
+    }
+  }
+
+  return result;
 }
 
-import type { Problem } from "./matrix";
-import { giantTour } from "./giantTour";
+/** `Cluster.id` -> its `adjacentRegions` set, for threading into `Problem.regionAdjacency`. */
+export function buildAdjacencyMapping(clusters: Cluster[]): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const c of clusters) {
+    map.set(c.id, c.adjacentRegions);
+  }
+  return map;
+}
 
 /**
  * Cheap intra-cluster travel estimate: a nearest-neighbour path (no 2-opt
@@ -93,62 +130,93 @@ function estimateTravelMin(problem: Problem, placeIds: string[]): number {
   return total;
 }
 
+export interface BaseCamp {
+  index: number;
+  dayIndices: number[];
+  baseStartId: string;
+  baseEndId: string;
+}
+
 /**
- * Assigns clusters to the days whose base locations are nearest to them,
- * then greedily bin-packs clusters onto their tied-nearest day by an
- * estimated dwell+travel load, compared as a FRACTION of each day's actual
- * start/end window length (not raw minutes) — a short-window day and a
- * long-window day filling up at the same rate are equally "loaded" this
- * way, whereas comparing raw minutes would always call the long day
- * emptier. Deliberately out of scope here (see `tasks.md` task 4.7 in the
- * cluster-first-strategy change): a day's already-committed
- * appointment/pinned load is not netted out of its window before packing
- * starts, since appointment-day placement for `clusterFirst` happens
- * downstream in `solve.ts`, not in this construction step — packing
- * against the day's full window is the same simplification `routeFirst`'s
- * `split.ts` construction makes, and this only sizes the *initial* state
- * ALNS then improves on.
+ * Groups the trip's `dayList` into consecutive "base camps" that share the same
+ * `baseStartId` and `baseEndId`.
  */
-function assignClustersToDays(problem: Problem, clusters: Cluster[]): Map<number, string[]> {
-  const dayAssignments = new Map<number, string[]>();
-  for (let d = 0; d < problem.dayList.length; d++) {
-    dayAssignments.set(d, []);
+export function groupBaseCamps(days: Day[]): BaseCamp[] {
+  const camps: BaseCamp[] = [];
+  for (let d = 0; d < days.length; d++) {
+    const day = days[d]!;
+    const lastCamp = camps[camps.length - 1];
+    if (
+      lastCamp &&
+      lastCamp.baseStartId === day.baseStartId &&
+      lastCamp.baseEndId === day.baseEndId
+    ) {
+      lastCamp.dayIndices.push(d);
+    } else {
+      camps.push({
+        index: camps.length,
+        dayIndices: [d],
+        baseStartId: day.baseStartId,
+        baseEndId: day.baseEndId,
+      });
+    }
+  }
+  return camps;
+}
+
+/**
+ * Assigns clusters to the nearest base camp group whose base locations are nearest
+ * to them, then greedily bin-packs clusters onto their tied-nearest base camp by an
+ * estimated dwell+travel load compared as a FRACTION of each base camp's total
+ * start/end window length.
+ */
+export function assignClustersToDays(
+  problem: Problem,
+  clusters: Cluster[],
+): { baseCamps: BaseCamp[]; assignments: Map<number, Cluster[]> } {
+  const baseCamps = groupBaseCamps(problem.dayList);
+  const assignments = new Map<number, Cluster[]>();
+  for (const camp of baseCamps) {
+    assignments.set(camp.index, []);
   }
 
-  // Find the closest tied days for each cluster
-  const clusterToTiedDays = new Map<string, number[]>();
-  
+  // Find the closest tied base camp group for each cluster
+  const clusterToTiedCamps = new Map<string, number[]>();
+
   for (const cluster of clusters) {
     let bestDist = Number.POSITIVE_INFINITY;
-    const tiedDays: number[] = [];
-    
-    for (let d = 0; d < problem.dayList.length; d++) {
-      const day = problem.dayList[d]!;
-      const baseStart = problem.placesById.get(day.baseStartId);
-      const baseEnd = problem.placesById.get(day.baseEndId);
-      
+    const tiedCamps: number[] = [];
+
+    for (const camp of baseCamps) {
+      const baseStart = problem.placesById.get(camp.baseStartId);
+      const baseEnd = problem.placesById.get(camp.baseEndId);
+
       let distStart = Number.POSITIVE_INFINITY;
       let distEnd = Number.POSITIVE_INFINITY;
 
       if (baseStart) distStart = haversineKm(cluster.centroid.lat, cluster.centroid.lng, baseStart.lat, baseStart.lng);
       if (baseEnd) distEnd = haversineKm(cluster.centroid.lat, cluster.centroid.lng, baseEnd.lat, baseEnd.lng);
-      
+
       const dist = Math.min(distStart, distEnd);
       if (dist < bestDist - 1.0) {
         bestDist = dist;
-        tiedDays.length = 0;
-        tiedDays.push(d);
+        tiedCamps.length = 0;
+        tiedCamps.push(camp.index);
       } else if (Math.abs(dist - bestDist) <= 1.0) {
-        tiedDays.push(d);
+        tiedCamps.push(camp.index);
       }
     }
-    clusterToTiedDays.set(cluster.id, tiedDays);
+    clusterToTiedCamps.set(cluster.id, tiedCamps.length > 0 ? tiedCamps : (baseCamps.length > 0 ? [0] : []));
   }
 
-  // Each day's load is tracked as a fraction of its own start/end window
-  // (see this function's doc comment) rather than raw minutes.
-  const windowMin = problem.dayList.map((day) => Math.max(1, parseHHMM(day.end) - parseHHMM(day.start)));
-  const dayLoadMin = new Array(problem.dayList.length).fill(0);
+  // Each base camp's load is tracked as a fraction of its total start/end window minutes
+  const campWindowMin = baseCamps.map((camp) =>
+    camp.dayIndices.reduce((sum, d) => {
+      const day = problem.dayList[d]!;
+      return sum + Math.max(1, parseHHMM(day.end) - parseHHMM(day.start));
+    }, 0),
+  );
+  const campLoadMin = new Array(baseCamps.length).fill(0);
 
   // Estimated dwell+travel load per cluster, computed once and reused for
   // both the sort and the packing key.
@@ -163,71 +231,92 @@ function assignClustersToDays(problem: Problem, clusters: Cluster[]): Map<number
   const sortedClusters = [...clusters].sort((a, b) => clusterLoad.get(b.id)! - clusterLoad.get(a.id)!);
 
   for (const cluster of sortedClusters) {
-    const tiedDays = clusterToTiedDays.get(cluster.id)!;
-    // Find the tied day with the minimum utilisation so far.
-    let bestDay = tiedDays[0]!;
-    let minFrac = dayLoadMin[bestDay]! / windowMin[bestDay]!;
-    for (const d of tiedDays) {
-      const frac = dayLoadMin[d]! / windowMin[d]!;
+    const tiedCamps = clusterToTiedCamps.get(cluster.id)!;
+    if (tiedCamps.length === 0) continue;
+
+    // Find the tied base camp with the minimum utilisation fraction so far.
+    let bestCamp = tiedCamps[0]!;
+    let minFrac = campLoadMin[bestCamp]! / (campWindowMin[bestCamp] || 1);
+    for (const c of tiedCamps) {
+      const frac = campLoadMin[c]! / (campWindowMin[c] || 1);
       if (frac < minFrac) {
         minFrac = frac;
-        bestDay = d;
+        bestCamp = c;
       }
     }
 
-    dayLoadMin[bestDay] += clusterLoad.get(cluster.id)!;
-    dayAssignments.get(bestDay)!.push(...cluster.places.map(p => p.id));
+    campLoadMin[bestCamp] += clusterLoad.get(cluster.id)!;
+    assignments.get(bestCamp)!.push(cluster);
   }
 
-  return dayAssignments;
+  return { baseCamps, assignments };
+}
+
+const ROTATION_CANDIDATES = 8;
+
+/**
+ * Splits a tour across the days of a base camp via Prins DP split, testing
+ * rotation seams to find the minimum-cost partition.
+ */
+function splitTourAcrossDays(problem: Problem, tour: string[]): string[][] {
+  const n = tour.length;
+  if (n === 0) return problem.dayList.map(() => []);
+  if (n === 1) return split(problem, tour).segments;
+
+  const edgeCost = (i: number): number => problem.matrix.minutes(tour[i]!, tour[(i + 1) % n]!);
+  const byEdgeCostDesc = Array.from({ length: n }, (_, i) => i).sort((a, b) => edgeCost(b) - edgeCost(a));
+  const cutStarts: number[] = [];
+  const maxCandidates = Math.min(ROTATION_CANDIDATES, n);
+  for (const i of byEdgeCostDesc) {
+    if (cutStarts.length >= maxCandidates) break;
+    cutStarts.push((i + 1) % n);
+  }
+
+  let bestSplitCost = Number.POSITIVE_INFINITY;
+  let bestSegments: string[][] = [];
+  for (const i of cutStarts) {
+    const rotated = i === 0 ? tour : [...tour.slice(i), ...tour.slice(0, i)];
+    const fwd = split(problem, rotated);
+    if (fwd.cost < bestSplitCost) {
+      bestSplitCost = fwd.cost;
+      bestSegments = fwd.segments;
+    }
+    const rev = split(problem, [...rotated].reverse());
+    if (rev.cost < bestSplitCost) {
+      bestSplitCost = rev.cost;
+      bestSegments = rev.segments;
+    }
+  }
+  return bestSegments;
 }
 
 /**
  * The cluster-first construction strategy.
+ * Groups days into base camps, assigns clusters to the nearest base camp,
+ * and performs localized DP splitting across each base camp's days.
  */
 export function clusterFirstSequence(problem: Problem): string[][] {
   const clusters = clusterPlaces(problem.places);
-  const assignments = assignClustersToDays(problem, clusters);
-  
-  const segments: string[][] = [];
-  for (let d = 0; d < problem.dayList.length; d++) {
-    const placesForDay = assignments.get(d) ?? [];
-    if (placesForDay.length > 0) {
-      const tour = giantTour(problem, placesForDay);
-      const day = problem.dayList[d]!;
-      const baseStart = day.baseStartId;
-      const baseEnd = day.baseEndId;
-      
-      let bestRot = tour;
-      let bestCost = Number.POSITIVE_INFINITY;
-      
-      for (let i = 0; i < tour.length; i++) {
-        const fwd = [...tour.slice(i), ...tour.slice(0, i)];
-        let fCost = problem.matrix.minutes(baseStart, fwd[0]!);
-        for (let j = 0; j < fwd.length - 1; j++) {
-          fCost += problem.matrix.minutes(fwd[j]!, fwd[j + 1]!);
-        }
-        fCost += problem.matrix.minutes(fwd[fwd.length - 1]!, baseEnd);
-        if (fCost < bestCost) {
-          bestCost = fCost;
-          bestRot = fwd;
-        }
-        
-        const rev = [...fwd].reverse();
-        let rCost = problem.matrix.minutes(baseStart, rev[0]!);
-        for (let j = 0; j < rev.length - 1; j++) {
-          rCost += problem.matrix.minutes(rev[j]!, rev[j + 1]!);
-        }
-        rCost += problem.matrix.minutes(rev[rev.length - 1]!, baseEnd);
-        if (rCost < bestCost) {
-          bestCost = rCost;
-          bestRot = rev;
-        }
-      }
-      segments.push(bestRot);
-    } else {
-      segments.push([]);
+  const { baseCamps, assignments } = assignClustersToDays(problem, clusters);
+
+  const segments: string[][] = Array.from({ length: problem.dayList.length }, () => []);
+
+  for (const camp of baseCamps) {
+    const clustersForCamp = assignments.get(camp.index) ?? [];
+    const placeIds = clustersForCamp.flatMap((c) => c.places.map((p) => p.id));
+    if (placeIds.length === 0) continue;
+
+    const campDays = camp.dayIndices.map((d) => problem.dayList[d]!);
+    const campProblem: Problem = { ...problem, dayList: campDays };
+
+    const tour = giantTour(problem, placeIds);
+    const campSegments = splitTourAcrossDays(campProblem, tour);
+
+    for (let i = 0; i < camp.dayIndices.length; i++) {
+      const d = camp.dayIndices[i]!;
+      segments[d] = campSegments[i] ?? [];
     }
   }
+
   return segments;
 }

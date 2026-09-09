@@ -322,26 +322,75 @@ export function exitNode(problem: Problem, dayIdx: number): string {
 }
 
 /** Cheapest-feasible insertion of `placeId` across the given days; mutates state. */
+export const DEFAULT_UNDER_LOAD_THRESHOLD = 0.65;
+
 /**
- * Whether `placeId` may join day `dayIdx` without introducing NEW
- * cross-region mixing (clusterFirst region protection — see design.md
- * Decision 2.5 in the cluster-first-strategy change). A place with no
- * `region` is a free agent: it never blocks, and is never blocked. A day
- * with no established region yet (empty, or every current occupant is
- * unregioned) accepts anything. Otherwise the day already has one or more
- * established regions (construction can tie-assign more than one cluster to
- * a day, so "already mixed" is possible) and `placeId` may only join if its
- * region is among them — this stops the operators from making mixing worse,
- * but does not require them to *fix* mixing construction already produced.
+ * Whether `placeId` may join day `dayIdx` under clusterFirst region
+ * protection (per `design.md` Decisions 2 & 3 in the refine-cluster-first
+ * change).
+ *
+ * A place with no `region` is a free agent: it never blocks, and is never
+ * blocked. A day with no established region yet (empty, or every current
+ * occupant is unregioned) accepts anything.
+ *
+ * Otherwise, the day already contains one or more established regions. The
+ * candidate place may join if:
+ * 1. Its `region` is already present on the day (resolves the mixed-day
+ *    lockout bug where days initialized with >1 region locked out subsequent
+ *    places from both regions).
+ * 2. Or, its `region` is geographically adjacent (via centroid distance in
+ *    `problem.regionAdjacency`) to ANY of the regions currently established
+ *    on the day.
+ * 3. Or, the day's current utilization (sum of occupants' dwell time over day
+ *    window duration) is below `utilizationThreshold` (default 0.65) and the
+ *    candidate place is low-priority (priority !== 1).
  */
-function regionCompatible(problem: Problem, state: State, dayIdx: number, placeId: string): boolean {
+export function regionCompatible(
+  problem: Problem,
+  state: State,
+  dayIdx: number,
+  placeId: string,
+  utilizationThreshold: number = DEFAULT_UNDER_LOAD_THRESHOLD,
+): boolean {
   const region = problem.placesById.get(placeId)?.region;
   if (!region) return true;
+
+  const dayRegions = new Set<string>();
   for (const id of state.days[dayIdx] ?? []) {
     const r = problem.placesById.get(id)?.region;
-    if (r && r !== region) return false;
+    if (r) dayRegions.add(r);
   }
-  return true;
+
+  // An empty day or a day with only unregioned places accepts any region.
+  if (dayRegions.size === 0) return true;
+
+  // Accept if candidate's region is already present on the day (mixed-day fix).
+  if (dayRegions.has(region)) return true;
+
+  // Accept if candidate's region is adjacent to ANY region currently on the day.
+  for (const r of dayRegions) {
+    if (problem.regionAdjacency?.get(r)?.has(region) || problem.regionAdjacency?.get(region)?.has(r)) {
+      return true;
+    }
+  }
+
+  // Under-utilized day bypass: allow low-priority places on days loaded below threshold.
+  const candidate = problem.placesById.get(placeId);
+  if (utilizationThreshold > 0 && (candidate?.priority ?? 2) !== 1) {
+    const day = problem.dayList[dayIdx];
+    if (day) {
+      const dayWindowMin = Math.max(1, parseHHMM(day.end) - parseHHMM(day.start));
+      let dwellSum = 0;
+      for (const id of state.days[dayIdx] ?? []) {
+        dwellSum += problem.placesById.get(id)?.dwellMin ?? 0;
+      }
+      if (dwellSum / dayWindowMin < utilizationThreshold) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**

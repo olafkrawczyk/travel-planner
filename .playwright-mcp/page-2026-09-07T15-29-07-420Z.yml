@@ -1,0 +1,66 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - img [aria-hidden] [ref=e7]:
+      - generic [ref=e8]: 09:00
+      - generic [ref=e10]: 12:00
+      - generic [ref=e12]: 15:00
+      - generic [ref=e14]: 18:00
+      - generic [ref=e16]: 21:00
+      - generic [ref=e18]: Day 1
+      - generic [ref=e27]: Day 2
+      - generic [ref=e36]: Day 3
+      - generic [ref=e45]: Day 4
+    - generic [ref=e53]:
+      - heading "Every day its own colour. Every stop timed to fit." [level=1] [ref=e54]
+      - paragraph [ref=e55]: Add the places you want to see. Travel Planner routes and times them into a day-by-day itinerary you can drag, pin, and edit.
+  - generic [ref=e56]:
+    - generic [ref=e57]:
+      - heading "New trip" [level=2] [ref=e58]
+      - generic [ref=e59]:
+        - text: Name
+        - textbox "Name" [ref=e60]:
+          - /placeholder: Tokyo 2026
+      - generic [ref=e61]:
+        - text: Starting city
+        - textbox "Starting city" [ref=e62]:
+          - /placeholder: e.g. Tokyo — seeds the home base location
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - text: From
+          - textbox "From" [ref=e65]: 2026-09-07
+        - generic [ref=e66]:
+          - text: To
+          - textbox "To" [ref=e67]: 2026-09-11
+      - button "Create trip" [ref=e68] [cursor=pointer]
+      - paragraph [ref=e69]: One day is generated per date with default 09:00–21:00 hours; the starting city becomes the home base location. Trips are capped at 60 days.
+    - generic [ref=e70]:
+      - heading "Start from a sample" [level=2] [ref=e71]
+      - generic [ref=e72]:
+        - button "Tokyo & Fuji (5D) 5 days, 32 places, Shinjuku hotel." [ref=e73] [cursor=pointer]:
+          - strong [ref=e74]: Tokyo & Fuji (5D)
+          - generic [ref=e75]: 5 days, 32 places, Shinjuku hotel.
+        - button "Iceland Ring (12D) 12 days, 71 places, a new hotel every night." [ref=e76] [cursor=pointer]:
+          - strong [ref=e77]: Iceland Ring (12D)
+          - generic [ref=e78]: 12 days, 71 places, a new hotel every night.
+      - list [ref=e79]:
+        - listitem [ref=e80]:
+          - button "Tokyo 5 days, 24 places, Shinjuku hotel." [ref=e81] [cursor=pointer]:
+            - strong [ref=e82]: Tokyo
+            - generic [ref=e83]: 5 days, 24 places, Shinjuku hotel.
+        - listitem [ref=e84]:
+          - button "Warsaw 4 days, 22 places, Hotel Bristol." [ref=e85] [cursor=pointer]:
+            - strong [ref=e86]: Warsaw
+            - generic [ref=e87]: 4 days, 22 places, Hotel Bristol.
+        - listitem [ref=e88]:
+          - button "Tokyo & Hakone 5 days, hotel changes to Hakone on day 3." [ref=e89] [cursor=pointer]:
+            - strong [ref=e90]: Tokyo & Hakone
+            - generic [ref=e91]: 5 days, hotel changes to Hakone on day 3.
+        - listitem [ref=e92]:
+          - button "Tokyo (100 places) 12 days, 100 places, two hotels." [ref=e93] [cursor=pointer]:
+            - strong [ref=e94]: Tokyo (100 places)
+            - generic [ref=e95]: 12 days, 100 places, two hotels.
+        - listitem [ref=e96]:
+          - button "Tokyo (custom) 5 days, 20 places, pre-clustered districts." [ref=e97] [cursor=pointer]:
+            - strong [ref=e98]: Tokyo (custom)
+            - generic [ref=e99]: 5 days, 20 places, pre-clustered districts.
+  - button "Import trip JSON…" [ref=e101] [cursor=pointer]

@@ -1,5 +1,5 @@
 import { formatHHMM, parseHHMM, windowsForDate, type Day, type Place, type UnscheduledReason } from "@app/domain";
-import { entryNode, exitNode, type State } from "./alns";
+import { entryNode, exitNode, regionCompatible, type State } from "./alns";
 import type { Problem } from "./matrix";
 import { computeTimes } from "./sequence";
 
@@ -31,11 +31,29 @@ function allowedDays(problem: Problem, place: Place): number[] {
  * (rare) case where `order` is the very infeasible order this place already
  * sits in, which would otherwise double it up in the trial.
  *
+ * `respectRegions` (clusterFirst only, want/nice priority only — see
+ * `classifyUnscheduled`'s call site) additionally requires `place` to pass
+ * `regionCompatible` against `dayIdx`'s current occupants before any time
+ * probe runs: a day the ALNS operators would never have placed this region
+ * onto in the first place was never a real time-fit candidate, so it must
+ * not report `window_conflict` just because it happened to have physical
+ * room. See design.md Decision 1 in the refine-cluster-first-spillover
+ * change.
+ *
  * Bounded by `order.length + 1` `computeTimes` calls; only ever invoked per
  * allowed day for one pooled place at a time (see `classifyUnscheduled`),
  * never inside the ALNS hot loop.
  */
-function fitsIgnoringWindow(problem: Problem, day: Day, order: string[], place: Place): boolean {
+function fitsIgnoringWindow(
+  problem: Problem,
+  state: State,
+  dayIdx: number,
+  day: Day,
+  order: string[],
+  place: Place,
+  respectRegions: boolean,
+): boolean {
+  if (respectRegions && !regionCompatible(problem, state, dayIdx, place.id)) return false;
   const base = order.filter((id) => id !== place.id);
   for (let pos = 0; pos <= base.length; pos++) {
     const trial = [...base.slice(0, pos), place.id, ...base.slice(pos)];
@@ -70,9 +88,11 @@ export function classifyUnscheduled(problem: Problem, state: State, placeId: str
   const p = problem.placesById.get(placeId);
   if (!p) return "no_time";
   if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return "unreachable";
+  const clusterFirst = problem.settings?.solverStrategy === "clusterFirst";
+  const respectRegions = clusterFirst && p.priority !== 1;
   for (const d of allowedDays(problem, p)) {
     const day = problem.dayList[d]!;
-    if (fitsIgnoringWindow(problem, day, state.days[d] ?? [], p)) return "window_conflict";
+    if (fitsIgnoringWindow(problem, state, d, day, state.days[d] ?? [], p, respectRegions)) return "window_conflict";
   }
   return "no_time";
 }

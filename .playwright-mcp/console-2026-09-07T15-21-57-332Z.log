@@ -1,0 +1,12 @@
+[     673ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5174/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550
+[    4835ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/e6f9097e-de37-4de7-bab4-a64c8e443ab7:2460
+[    4836ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/e6f9097e-de37-4de7-bab4-a64c8e443ab7:2460
+[    4836ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/e6f9097e-de37-4de7-bab4-a64c8e443ab7:2460
+[  150041ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/e6f9097e-de37-4de7-bab4-a64c8e443ab7:2460
+[  150044ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/e6f9097e-de37-4de7-bab4-a64c8e443ab7:2460
+[  150044ms] [WARNING] Expected value to be of type number, but found null instead. @ blob:http://localhost:5174/e6f9097e-de37-4de7-bab4-a64c8e443ab7:2460
+[  181681ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5174/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550
+[  229837ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5174/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550
+[  342193ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:5174/src/components/TripScreen.tsx?t=1788794859474:0
+[  342194ms] [ERROR] [hmr] Failed to reload /src/components/TripScreen.tsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:5174/@vite/client:175
+[  346474ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5174/node_modules/.vite/deps/chunk-YYN6DZAU.js?v=dad239bf:21550

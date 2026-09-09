@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { insertPlace, regionCompatible, type State } from "./alns";
+import { buildProblem } from "./matrix";
 import { solve } from "./solve";
 import { DEG_PER_KM, day, place, trip } from "./testUtils";
 
@@ -32,10 +34,16 @@ function makeTwoDistrictTrip(solverStrategy: "routeFirst" | "clusterFirst") {
   const districtANice = Array.from({ length: 3 }, (_, i) =>
     place({ id: `an${i}`, lat: 0, lng: i * 0.02 * DEG_PER_KM, dwellMin: 150, priority: 3, region: "A" }),
   );
-  // 2 light places near base B — day 2 has plenty of spare capacity.
+  // 4 places near base B (480min dwell — 66.7% of the 720min window,
+  // sitting above the 65% under-load spillover threshold so region
+  // protection holds during search, while still leaving 240min of spare
+  // capacity that an overflowing "A" place (150min) would easily fit into
+  // absent region protection).
   const districtB = [
-    place({ id: "b0", lat: 50 * DEG_PER_KM, lng: 0.05 * DEG_PER_KM, dwellMin: 60, priority: 2, region: "B" }),
-    place({ id: "b1", lat: 50.05 * DEG_PER_KM, lng: 0, dwellMin: 60, priority: 2, region: "B" }),
+    place({ id: "b0", lat: 50 * DEG_PER_KM, lng: 0.05 * DEG_PER_KM, dwellMin: 120, priority: 2, region: "B" }),
+    place({ id: "b1", lat: 50.05 * DEG_PER_KM, lng: 0, dwellMin: 120, priority: 2, region: "B" }),
+    place({ id: "b2", lat: 50.02 * DEG_PER_KM, lng: 0.02 * DEG_PER_KM, dwellMin: 120, priority: 2, region: "B" }),
+    place({ id: "b3", lat: 50.04 * DEG_PER_KM, lng: 0.04 * DEG_PER_KM, dwellMin: 120, priority: 2, region: "B" }),
   ];
 
   const t = trip({
@@ -59,6 +67,8 @@ describe("region protection through the real solve() path", () => {
       ...Array.from({ length: 3 }, (_, i) => [`an${i}`, "A"] as const),
       ["b0", "B"],
       ["b1", "B"],
+      ["b2", "B"],
+      ["b3", "B"],
     ]);
 
     for (const dayPlan of itinerary.days) {
@@ -96,5 +106,118 @@ describe("region protection through the real solve() path", () => {
       b.days.map((d) => d.stops.map((s) => s.placeId)),
     );
     expect(a.stats.score).toBe(b.stats.score);
+  });
+});
+
+describe("regionCompatible: set-based mixing and centroid adjacency", () => {
+  /**
+   * Three regions: "A" and "B" are tight clusters ~1km apart (within
+   * `DEFAULT_ADJACENCY_THRESHOLD_KM`, so adjacent); "C" is ~50km away from
+   * both (far outside the threshold, so non-adjacent to either).
+   */
+  // "a0" is dwelled long enough (500 of the day's 720-min window, ~69%) to
+  // sit above the default 65% under-load spillover threshold on its own —
+  // these tests target the base set/adjacency rules, not the spillover
+  // bypass (see the "under-utilized day spillover" describe block below for
+  // that), so the day must read as adequately loaded for a rejection to mean
+  // what it says.
+  function makeThreeRegionProblem() {
+    const a0 = place({ id: "a0", region: "A", lat: 0, lng: 0, dwellMin: 500 });
+    const b0 = place({ id: "b0", region: "B", lat: 1 * DEG_PER_KM, lng: 0 });
+    const c0 = place({ id: "c0", region: "C", lat: 50 * DEG_PER_KM, lng: 0 });
+
+    const t = trip({
+      places: [a0, b0, c0],
+      days: [day({ id: "d1" })],
+    });
+    t.settings.solverStrategy = "clusterFirst";
+    return buildProblem(t);
+  }
+
+  it("a day mixed with 'A' and 'B' accepts a new place from 'A' (mixed-day lockout fix)", () => {
+    const problem = makeThreeRegionProblem();
+    const state: State = { days: [["a0", "b0"]], pool: [] };
+    const newA = place({ id: "a1", region: "A", lat: 0.01 * DEG_PER_KM, lng: 0 });
+    problem.placesById.set("a1", newA);
+    expect(regionCompatible(problem, state, 0, "a1")).toBe(true);
+  });
+
+  it("a day mixed with 'A' and 'B' rejects a place from 'C' (far, non-adjacent)", () => {
+    const problem = makeThreeRegionProblem();
+    const state: State = { days: [["a0", "b0"]], pool: [] };
+    expect(regionCompatible(problem, state, 0, "c0")).toBe(false);
+  });
+
+  it("a day with only 'A' accepts a place from adjacent 'B'", () => {
+    const problem = makeThreeRegionProblem();
+    const state: State = { days: [["a0"]], pool: [] };
+    expect(regionCompatible(problem, state, 0, "b0")).toBe(true);
+  });
+
+  it("a day with only 'A' rejects a place from non-adjacent 'C'", () => {
+    const problem = makeThreeRegionProblem();
+    const state: State = { days: [["a0"]], pool: [] };
+    expect(regionCompatible(problem, state, 0, "c0")).toBe(false);
+  });
+
+  it("an empty day accepts any region", () => {
+    const problem = makeThreeRegionProblem();
+    const state: State = { days: [[]], pool: [] };
+    expect(regionCompatible(problem, state, 0, "c0")).toBe(true);
+  });
+
+  it("insertPlace with respectRegions=true honours the same rules", () => {
+    const problem = makeThreeRegionProblem();
+    const state: State = { days: [["a0", "b0"]], pool: [] };
+    // "c0" (non-adjacent to A or B) must be refused.
+    expect(insertPlace(problem, state, 0, "c0", false, true)).toBe(false);
+    expect(state.days[0]).not.toContain("c0");
+  });
+});
+
+describe("regionCompatible: under-utilized day spillover (task 2.3)", () => {
+  /** A single "A"-region day, with a configurable occupant dwell and a 600-min window. */
+  function makeUnderLoadProblem(occupantDwellMin: number) {
+    const a0 = place({ id: "a0", region: "A", lat: 0, lng: 0, dwellMin: occupantDwellMin });
+    const c0 = place({ id: "c0", region: "C", lat: 50 * DEG_PER_KM, lng: 0, priority: 2 });
+
+    const t = trip({
+      places: [a0, c0],
+      days: [day({ id: "d1", start: "09:00", end: "19:00" })], // 600-min window
+    });
+    t.settings.solverStrategy = "clusterFirst";
+    const problem = buildProblem(t);
+    return problem;
+  }
+
+  it("allows a low-priority, mismatched-region place onto a day loaded below 65%", () => {
+    // 300 / 600 = 50% utilization — below the default 0.65 threshold.
+    const problem = makeUnderLoadProblem(300);
+    const state: State = { days: [["a0"]], pool: [] };
+    expect(regionCompatible(problem, state, 0, "c0")).toBe(true);
+  });
+
+  it("still rejects the same place once the day is loaded at/above 65%", () => {
+    // 400 / 600 ≈ 66.7% utilization — above the default 0.65 threshold.
+    const problem = makeUnderLoadProblem(400);
+    const state: State = { days: [["a0"]], pool: [] };
+    expect(regionCompatible(problem, state, 0, "c0")).toBe(false);
+  });
+
+  it("does not bypass region protection for a must-priority (priority 1) place, even on an under-loaded day", () => {
+    const problem = makeUnderLoadProblem(300);
+    const mustC = place({ id: "c_must", region: "C", lat: 50 * DEG_PER_KM, lng: 0, priority: 1 });
+    problem.placesById.set("c_must", mustC);
+    const state: State = { days: [["a0"]], pool: [] };
+    expect(regionCompatible(problem, state, 0, "c_must")).toBe(false);
+  });
+
+  it("honours a custom utilizationThreshold argument", () => {
+    // 300 / 600 = 50% — below a raised 0.9 threshold, so the bypass applies.
+    const problem = makeUnderLoadProblem(300);
+    const state: State = { days: [["a0"]], pool: [] };
+    expect(regionCompatible(problem, state, 0, "c0", 0.9)).toBe(true);
+    // Disabling the bypass entirely (threshold 0) must fall back to the base rules.
+    expect(regionCompatible(problem, state, 0, "c0", 0)).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import {
 } from "@app/domain";
 import { haversineKm, DEFAULT_OSRM_PROFILE } from "@app/geo";
 import { parseHHMM } from "@app/domain";
+import { clusterPlaces, buildAdjacencyMapping } from "./cluster";
 
 export type LegSource = "heuristic" | "override" | "api";
 
@@ -307,6 +308,17 @@ export interface Problem {
   matrix: TravelMatrix;
   weights: Required<NonNullable<TripSettings["weights"]>>;
   stayGroups: number[][]; // indices of dayList belonging to each stay
+  /**
+   * `Place.region` -> set of geographically adjacent regions (centroid
+   * distance within `clusterFirst`'s adjacency threshold — see
+   * `cluster.ts`'s `clusterPlaces`/`DEFAULT_ADJACENCY_THRESHOLD_KM`).
+   * Populated for every solve (regardless of `solverStrategy`) from the same
+   * `Place.region` groupings `clusterFirst` construction uses, so
+   * `alns.ts`'s `regionCompatible` can allow adjacent regions to share a
+   * day without a hard region-name match. Unused (never consulted) when
+   * `solverStrategy` is `routeFirst`, where region stays inert.
+   */
+  regionAdjacency: Map<string, Set<string>>;
 }
 
 /**
@@ -420,6 +432,8 @@ export function buildProblem(
   const schedulable = trip.places.filter((p) => !baseIdSet.has(p.id) && p.category !== "hotel");
 
   const stayGroups: number[][] = staySegments(trip.days);
+  const clusters = clusterPlaces(schedulable);
+  const regionAdjacency = buildAdjacencyMapping(clusters);
 
   return {
     trip,
@@ -431,6 +445,7 @@ export function buildProblem(
     matrix: new TravelMatrix(nodes, entries, overrides, placesById, settings, apiDurations, apiProfile),
     weights,
     stayGroups,
+    regionAdjacency,
   };
 }
 
