@@ -129,8 +129,8 @@ function explainNoTime(problem: Problem, state: State, p: Place): string {
     if (free > bestFree) {
       bestFree = free;
       bestTravel =
-        (problem.matrix.minutes(entryNode(problem, d), p.id) +
-          problem.matrix.minutes(p.id, exitNode(problem, d))) /
+        (problem.matrix.minutesForDay(entryNode(problem, d), p.id, d) +
+          problem.matrix.minutesForDay(p.id, exitNode(problem, d), d)) /
         2;
     }
   }
@@ -146,7 +146,7 @@ function explainNoTime(problem: Problem, state: State, p: Place): string {
 function explainWindowConflict(problem: Problem, p: Place): string {
   for (const d of allowedDays(problem, p)) {
     const day = problem.dayList[d]!;
-    const arrive = parseHHMM(day.start) + problem.matrix.minutes(entryNode(problem, d), p.id);
+    const arrive = parseHHMM(day.start) + problem.matrix.minutesForDay(entryNode(problem, d), p.id, d);
     const arriveStr = formatHHMM(Math.round(arrive));
     if (p.appointment) {
       const appt = parseHHMM(p.appointment.start);

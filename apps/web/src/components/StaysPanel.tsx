@@ -1,7 +1,13 @@
 import { useState, type CSSProperties } from "react";
-import type { Place } from "@app/domain";
+import type { CarRental, Place } from "@app/domain";
 import { staysFor, useStore, type Stay } from "../store";
 import { nightsRange, withCheckIn, withHotel, withNights, withoutStay, withSplitAt } from "../stays";
+import {
+  formatRentalDates,
+  isDateCoveredByRental,
+  isRentalOutOfRange,
+  validateRental,
+} from "../rentals";
 
 /**
  * The exact `notes` text the store's `addHotelForStay` stamps on a hotel it
@@ -88,6 +94,31 @@ export function gmapsHotelSearchLink(lat: number, lng: number): string {
  */
 export function defaultRecommendationOpen(hotel: Place | undefined): boolean {
   return hotelNeedsLocation(hotel) || !hotel;
+}
+
+/** Car glyph for rental indicators and car leg badges — inline SVG. */
+export function CarIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      className={className}
+    >
+      <path
+        d="M2.5 9.5L4 4.5h8l1.5 5M2 9.5h12v4a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1v-1H4v1a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-4z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="4.5" cy="11.5" r="1" fill="currentColor" />
+      <circle cx="11.5" cy="11.5" r="1" fill="currentColor" />
+    </svg>
+  );
 }
 
 /** Bed glyph for a stay row's hotel field — inline SVG (currentColor,
@@ -423,9 +454,155 @@ export function StaysPanel() {
               </button>
             </div>
           )}
+          <RentalsSection trip={trip} />
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Car rental editor: a date-range picker restricted to trip dates, a
+ * rental-coverage bar (distinct styling from the stays coverage bar), and
+ * an out-of-range flag when trip dates no longer cover a rental. Every edit
+ * goes through the store's `addCarRental`/`updateCarRental`/`deleteCarRental`
+ * (each a single undoable mutation that triggers a full re-solve — see
+ * design.md decision 4 in the mixed-commute-car-rental change).
+ */
+function RentalsSection({ trip }: { trip: NonNullable<ReturnType<typeof useStore.getState>["currentTrip"]> }) {
+  const addCarRental = useStore((s) => s.addCarRental);
+  const updateCarRental = useStore((s) => s.updateCarRental);
+  const deleteCarRental = useStore((s) => s.deleteCarRental);
+  const [newStart, setNewStart] = useState("");
+  const [newEnd, setNewEnd] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const rentals = trip.carRentals ?? [];
+  const days = trip.days;
+  const minDate = days[0]?.date ?? "";
+  const maxDate = days[days.length - 1]?.date ?? "";
+
+  // Days already covered by another rental — disabled in the date pickers,
+  // per the calendar-style-range-picker requirement.
+  const coveredDates = new Set<string>();
+  for (const r of rentals) {
+    for (const d of days) {
+      if (r.startDate <= d.date && d.date <= r.endDate) coveredDates.add(d.date);
+    }
+  }
+
+  function handleAdd() {
+    setFormError(null);
+    const err = addCarRental(newStart, newEnd);
+    if (err) {
+      setFormError(err);
+    } else {
+      setNewStart("");
+      setNewEnd("");
+    }
+  }
+
+  return (
+    <div className="rentals-section">
+      <div className="rentals-header">
+        <h4>
+          <CarIcon /> Car rentals
+        </h4>
+      </div>
+      {rentals.length > 0 && <RentalCoverageBar rentals={rentals} days={days} />}
+      {rentals.length > 0 && (
+        <ul className="rentals-list">
+          {rentals.map((r) => {
+            const outOfRange = isRentalOutOfRange(r, days);
+            return (
+              <li key={r.id} className="rental-row">
+                <span className="rental-icon" aria-hidden="true">
+                  <CarIcon />
+                </span>
+                <span className="rental-dates">{formatRentalDates(r, days)}</span>
+                {outOfRange && (
+                  <span
+                    className="badge badge-warning"
+                    title="This rental's dates fall outside the current trip dates — edit or remove it."
+                  >
+                    out of range
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="icon-btn rental-remove-btn"
+                  title="Remove this rental"
+                  aria-label={`Remove rental ${formatRentalDates(r, days)}`}
+                  onClick={() => deleteCarRental(r.id)}
+                >
+                  <CloseIcon />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="rental-add-row">
+        <label className="stay-field">
+          <span className="stay-field-label">Start</span>
+          <input
+            type="date"
+            className="clock"
+            value={newStart}
+            min={minDate}
+            max={maxDate}
+            aria-label="Rental start date"
+            onChange={(e) => setNewStart(e.target.value)}
+          />
+        </label>
+        <label className="stay-field">
+          <span className="stay-field-label">End</span>
+          <input
+            type="date"
+            className="clock"
+            value={newEnd}
+            min={newStart || minDate}
+            max={maxDate}
+            aria-label="Rental end date"
+            onChange={(e) => setNewEnd(e.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          className="btn-add-change"
+          disabled={!newStart || !newEnd}
+          title="Book a car rental for this date range"
+          onClick={handleAdd}
+        >
+          Add rental
+        </button>
+      </div>
+      {formError && (
+        <p className="hint rental-error" role="alert">
+          {formError}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Horizontal rental-coverage row: distinct styling from the stays coverage
+ *  bar (see `.rentals-coverage` in stays.css) so the two are never confused
+ *  at a glance, in the style of the existing stays coverage bar. */
+function RentalCoverageBar({ rentals, days }: { rentals: CarRental[]; days: { date: string }[] }) {
+  return (
+    <div className="rentals-coverage" role="img" aria-label="Car rental coverage across the trip days">
+      {days.map((d, i) => {
+        const covered = isDateCoveredByRental(d.date, rentals);
+        return (
+          <div
+            key={`${d.date}-${i}`}
+            className={"rentals-coverage-seg" + (covered ? " covered" : "")}
+            title={`Day ${i + 1} (${d.date}): ${covered ? "car available" : "no rental"}`}
+          />
+        );
+      })}
+    </div>
   );
 }
 

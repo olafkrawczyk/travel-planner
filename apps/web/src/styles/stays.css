@@ -382,3 +382,91 @@
   background: var(--bg-surface-hover);
   color: var(--text);
 }
+
+/* Car rentals section */
+.rentals-section {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.rentals-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-1);
+}
+
+.rentals-header h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text);
+}
+
+/* Distinct coverage bar: segmented daily dashes, tinted when covered */
+.rentals-coverage {
+  display: flex;
+  gap: 3px;
+  margin: var(--space-1) 0 var(--space-2);
+  height: 6px;
+}
+
+.rentals-coverage-seg {
+  flex: 1;
+  background: var(--border);
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.rentals-coverage-seg.covered {
+  background: var(--accent);
+}
+
+.rentals-list {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.rental-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-surface-hover);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.rental-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+.rental-dates {
+  font-family: var(--font-mono);
+  flex-grow: 1;
+}
+
+.rental-remove-btn {
+  margin-left: auto;
+}
+
+.rental-add-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.rental-error {
+  color: var(--danger);
+  margin-top: var(--space-1);
+}

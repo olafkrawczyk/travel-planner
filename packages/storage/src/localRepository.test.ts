@@ -97,6 +97,36 @@ describe("LocalRepository", () => {
     expect(await other.get(imported.id)).toEqual(imported);
   });
 
+  it("round-trips car rentals through save/reload/export/import", async () => {
+    const t = parseTrip({
+      ...sampleTrip(),
+      carRentals: [{ id: "rent_1", startDate: "2026-04-01", endDate: "2026-04-02" }],
+    });
+    await repo.put(t);
+    const reloaded = await repo.get("trip_1");
+    expect(reloaded?.carRentals).toEqual([{ id: "rent_1", startDate: "2026-04-01", endDate: "2026-04-02" }]);
+
+    const json = await repo.exportJson("trip_1");
+    const imported = await repo.importJson(json);
+    expect(imported.carRentals).toEqual(t.carRentals);
+  });
+
+  it("loads a legacy v3 row (no carRentals field) with carRentals: []", async () => {
+    const t = parseTrip(sampleTrip());
+    // Bypass put() to write a pre-v4-era payload directly, the way an
+    // existing user's IndexedDB looks before this change ships.
+    const v3 = { ...JSON.parse(JSON.stringify(t)), schemaVersion: 3 };
+    delete (v3 as Record<string, unknown>).carRentals;
+    await (repo as unknown as { trips: { put(row: { id: string; json: string }): Promise<unknown> } }).trips.put({
+      id: t.id,
+      json: JSON.stringify(v3),
+    });
+
+    const loaded = await repo.get(t.id);
+    expect(loaded?.schemaVersion).toBe(schemaVersion);
+    expect(loaded?.carRentals).toEqual([]);
+  });
+
   // Regression for the P0 finding: re-importing a file whose id collides
   // with an already-stored trip must never overwrite it (put() upserts by
   // id in Dexie, so keeping the file's id would silently clobber the

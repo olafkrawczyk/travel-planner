@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Category, Place } from "@app/domain";
+import type { Category, Place, Trip } from "@app/domain";
 import { newPlaceId } from "@app/domain";
 import { appointmentStart, useStore } from "../store";
 import { baseUsage, normalizePlace } from "../places";
@@ -55,6 +55,20 @@ export function collectRegionOptions(existing: readonly string[], current?: stri
  */
 export function isAutoRegionName(region: string): boolean {
   return /^District \d+$/.test(region);
+}
+
+/**
+ * A deleted place must not leave dangling `startLocation`/`endLocation`
+ * references — unlike `baseStartId`/`baseEndId` (blocked outright by
+ * `baseUsage`, see places.ts), these are per-day overrides of the base and
+ * safely fall back to `"base"` when their target disappears (intercity
+ * transfer days feature). Mutates `days` in place; returns nothing.
+ */
+export function clearDanglingDayLocations(days: Trip["days"], deletedPlaceId: string): void {
+  for (const day of days) {
+    if (day.startLocation === deletedPlaceId) day.startLocation = "base";
+    if (day.endLocation === deletedPlaceId) day.endLocation = "base";
+  }
 }
 
 /** Place editor modal: create (from map click) or edit (task 7.4). */
@@ -121,6 +135,7 @@ export function PlaceEditor() {
                 for (const day of draft.days) {
                   day.pinnedOrder = day.pinnedOrder?.filter((x) => x !== id);
                 }
+                clearDanglingDayLocations(draft.days, id);
                 draft.travelOverrides = (draft.travelOverrides || []).filter(
                   (o) => o.fromId !== id && o.toId !== id,
                 );

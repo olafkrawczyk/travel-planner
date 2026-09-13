@@ -6,7 +6,9 @@ import {
   type Itinerary,
   type Place,
   type Trip,
+  type CarRental,
   newPlaceId,
+  newRentalId,
   tryParseHHMM,
 } from "@app/domain";
 import { LocalRepository, DexieMatrixCache, matrixCacheKey, type MatrixCache } from "@app/storage";
@@ -25,6 +27,7 @@ import {
   type AnySampleData,
 } from "./tripFactory";
 import { staysFor, validateStays, withHotel, type Stay } from "./stays";
+import { validateRental } from "./rentals";
 import { PHOTON_CONTACT } from "./photonContact";
 
 export { dateRange, MAX_TRIP_DAYS };
@@ -211,6 +214,19 @@ export interface StoreState {
    *  the hotel is created at that deliberate location instead and is NOT
    *  flagged as needing a location. */
   addHotelForStay(idx: number, name?: string, location?: { lat: number; lng: number }): string | null;
+  /** Book a car rental for a date range within the trip. Validates against
+   *  trip dates and existing rentals (no overlaps); on success the rental is
+   *  stored on the trip and a FULL re-solve runs immediately (car
+   *  availability changes the feasible solution space across all days — see
+   *  design.md decision 4 in the mixed-commute-car-rental change). Returns
+   *  the human-readable validation error, or null on success. */
+  addCarRental(startDate: string, endDate: string): string | null;
+  /** Change an existing rental's date range; same validation, persistence and
+   *  full re-solve contract as `addCarRental`. */
+  updateCarRental(id: string, startDate: string, endDate: string): string | null;
+  /** Remove a car rental by id; triggers a full re-solve like the other
+   *  rental edits. */
+  deleteCarRental(id: string): void;
   /** Suggested bases verified via background shadow solves. */
   suggestedBases: SuggestedBase[];
   /** Dismiss one suggested base. */
@@ -893,6 +909,52 @@ export const useStore = create<StoreState>((set, get) => {
         applyStaysToDays(draft, withHotel(staysFor(draft), idx, id));
       });
       return id;
+    },
+
+    addCarRental(startDate, endDate) {
+      const { currentTrip } = get();
+      if (!currentTrip) return "No active trip.";
+      const error = validateRental({ startDate, endDate }, currentTrip.carRentals ?? [], undefined, currentTrip.days);
+      if (error) {
+        set({ toast: error });
+        return error;
+      }
+      const id = newRentalId();
+      get().mutateTrip((draft) => {
+        if (!draft.carRentals) draft.carRentals = [];
+        draft.carRentals.push({ id, startDate, endDate });
+      });
+      requestSolve({ type: "full" });
+      return null;
+    },
+
+    updateCarRental(id, startDate, endDate) {
+      const { currentTrip } = get();
+      if (!currentTrip) return "No active trip.";
+      const error = validateRental({ startDate, endDate }, currentTrip.carRentals ?? [], id, currentTrip.days);
+      if (error) {
+        set({ toast: error });
+        return error;
+      }
+      get().mutateTrip((draft) => {
+        if (!draft.carRentals) draft.carRentals = [];
+        const idx = draft.carRentals.findIndex((r) => r.id === id);
+        if (idx >= 0) {
+          draft.carRentals[idx] = { id, startDate, endDate };
+        }
+      });
+      requestSolve({ type: "full" });
+      return null;
+    },
+
+    deleteCarRental(id) {
+      const { currentTrip } = get();
+      if (!currentTrip) return;
+      get().mutateTrip((draft) => {
+        if (!draft.carRentals) draft.carRentals = [];
+        draft.carRentals = draft.carRentals.filter((r) => r.id !== id);
+      });
+      requestSolve({ type: "full" });
     },
 
     dismissSuggestedBase(id) {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** Stored-data schema version. Bump when schemas change; migrations live in migrations.ts. */
-export const schemaVersion = 3;
+export const schemaVersion = 4;
 
 export const IdSchema = z.string().min(1);
 
@@ -251,6 +251,26 @@ const MAX_TRIP_DAYS = 60;
  *  hostile/corrupt file's ability to bloat IndexedDB or slow the solver. */
 const MAX_TRIP_PLACES = 2000;
 
+/**
+ * A car rental booked for a date range within the trip. The car is assumed to
+ * be with the traveller for the whole day on every date from `startDate`
+ * through `endDate` inclusive (v1: no pickup/dropoff locations or times — see
+ * the `mixed-commute-car-rental` change). Per-day car availability is always
+ * *derived* from these ranges (in the solver's `buildProblem`), never stored
+ * on `Day`, so range data survives trip date edits without N booleans to keep
+ * consistent.
+ */
+export const CarRentalSchema = z
+  .object({
+    id: IdSchema,
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD"),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD"),
+  })
+  .refine((r) => r.startDate <= r.endDate, {
+    message: "Car rental end date must not be before its start date.",
+  });
+export type CarRental = z.infer<typeof CarRentalSchema>;
+
 export const TripSchema = z.object({
   id: IdSchema,
   schemaVersion: z.number().int().positive(),
@@ -261,6 +281,10 @@ export const TripSchema = z.object({
     .array(PlaceSchema)
     .max(MAX_TRIP_PLACES, `Trip has too many places: cannot exceed ${MAX_TRIP_PLACES} places.`),
   travelOverrides: z.array(TravelOverrideSchema),
+  /** Car rentals booked for part of the trip. Optional-with-default so v3
+   *  payloads validate unchanged; migration adds `carRentals: []` (see
+   *  `migrations` below). */
+  carRentals: z.array(CarRentalSchema).max(50).default([]),
   settings: TripSettingsSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -353,6 +377,11 @@ export const migrations: Record<number, Migration> = {
   // justification are traceable, matching the style of the `1: (t) => t`
   // migration above.
   3: (t) => t,
+  // v3 → v4: `Trip.carRentals` added (additive, optional-with-default in the
+  // zod schema, so old payloads would validate unchanged anyway). The
+  // migration records the version bump's justification and seeds the empty
+  // list explicitly so post-migration data always carries the field.
+  4: (t) => ({ ...t, carRentals: Array.isArray(t.carRentals) ? t.carRentals : [] }),
 };
 
 const WEEKDAY_BY_JS_DAY: readonly Weekday[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];

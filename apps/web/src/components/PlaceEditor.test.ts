@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { Place, TimeWindow, WeeklyPattern } from "@app/domain";
+import type { Day, Place, TimeWindow, WeeklyPattern } from "@app/domain";
 import type { WeeklyProposal } from "@app/geo";
-import { collectRegionOptions, isAutoRegionName } from "./PlaceEditor";
+import { clearDanglingDayLocations, collectRegionOptions, isAutoRegionName } from "./PlaceEditor";
 import {
   buildOpeningHoursFields,
   defaultWeeklyPattern,
@@ -325,6 +325,59 @@ describe("exceptionsToOverrides", () => {
 
   it("returns empty collections for an empty exceptions map", () => {
     expect(exceptionsToOverrides({})).toEqual({ closedDates: [], openingHours: {} });
+  });
+});
+
+describe("clearDanglingDayLocations", () => {
+  function makeDay(overrides: Partial<Day> = {}): Day {
+    return {
+      id: "d0",
+      date: "2026-01-01",
+      start: "09:00",
+      end: "21:00",
+      startLocation: "base",
+      endLocation: "base",
+      baseStartId: "hotel-a",
+      baseEndId: "hotel-a",
+      ...overrides,
+    };
+  }
+
+  it("resets a day's startLocation referencing the deleted place to 'base'", () => {
+    const days = [makeDay({ id: "d0", startLocation: "station-1" })];
+    clearDanglingDayLocations(days, "station-1");
+    expect(days[0]!.startLocation).toBe("base");
+  });
+
+  it("resets a day's endLocation referencing the deleted place to 'base'", () => {
+    const days = [makeDay({ id: "d1", endLocation: "station-2" })];
+    clearDanglingDayLocations(days, "station-2");
+    expect(days[0]!.endLocation).toBe("base");
+  });
+
+  it("resets both fields when both reference the deleted place", () => {
+    const days = [makeDay({ startLocation: "airport-1", endLocation: "airport-1" })];
+    clearDanglingDayLocations(days, "airport-1");
+    expect(days[0]!.startLocation).toBe("base");
+    expect(days[0]!.endLocation).toBe("base");
+  });
+
+  it("leaves days whose start/end locations do not reference the deleted place untouched", () => {
+    const days = [
+      makeDay({ id: "d0", startLocation: "station-1", endLocation: "station-2" }),
+      makeDay({ id: "d1", startLocation: "base", endLocation: "base" }),
+    ];
+    clearDanglingDayLocations(days, "hotel-a");
+    expect(days[0]!.startLocation).toBe("station-1");
+    expect(days[0]!.endLocation).toBe("station-2");
+    expect(days[1]!.startLocation).toBe("base");
+    expect(days[1]!.endLocation).toBe("base");
+  });
+
+  it("does not touch other places with similar ids", () => {
+    const days = [makeDay({ startLocation: "station-11" })];
+    clearDanglingDayLocations(days, "station-1");
+    expect(days[0]!.startLocation).toBe("station-11");
   });
 });
 

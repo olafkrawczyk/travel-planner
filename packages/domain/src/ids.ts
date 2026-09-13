@@ -13,3 +13,4 @@ export const newId = (): Id => nano();
 export const newTripId = (): Id => `trip_${nano()}`;
 export const newPlaceId = (): Id => `plc_${nano()}`;
 export const newDayId = (): Id => `day_${nano()}`;
+export const newRentalId = (): Id => `rent_${nano()}`;

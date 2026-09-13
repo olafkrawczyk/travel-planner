@@ -26,6 +26,7 @@ function makeTrip(days: number, hotelIds: string[]): Trip {
     })),
     places: hotelIds.map((id) => place(id)),
     travelOverrides: [],
+    carRentals: [],
     settings: {
       carOnly: false,
       solverStrategy: "clusterFirst",
@@ -56,16 +57,16 @@ describe("baseUsage", () => {
     expect(baseUsage(trip, "hotel-c")).toEqual({ dayIndex: 2, dayId: "d2" });
   });
 
-  it("finds a place used as a non-'base' startLocation", () => {
+  it("does not block a place used as a non-'base' startLocation (reset to base on delete instead)", () => {
     const trip = makeTrip(2, ["hotel-a"]);
     trip.days[0]!.startLocation = "station-1";
-    expect(baseUsage(trip, "station-1")).toEqual({ dayIndex: 0, dayId: "d0" });
+    expect(baseUsage(trip, "station-1")).toBeNull();
   });
 
-  it("finds a place used as a non-'base' endLocation", () => {
+  it("does not block a place used as a non-'base' endLocation (reset to base on delete instead)", () => {
     const trip = makeTrip(2, ["hotel-a"]);
     trip.days[1]!.endLocation = "station-2";
-    expect(baseUsage(trip, "station-2")).toEqual({ dayIndex: 1, dayId: "d1" });
+    expect(baseUsage(trip, "station-2")).toBeNull();
   });
 
   it("returns null for an ordinary place not referenced by any day", () => {

@@ -1,4 +1,4 @@
-import { TripSchema, TripSettingsSchema, schemaVersion, type Day, type Place, type Trip, type TravelOverride } from "@app/domain";
+import { TripSchema, TripSettingsSchema, schemaVersion, type CarRental, type Day, type Place, type Trip, type TravelOverride } from "@app/domain";
 
 let counter = 0;
 
@@ -47,6 +47,8 @@ export function trip(
     places: Place[];
     days: (Partial<Day> & { id: string })[];
     travelOverrides?: TravelOverride[];
+    carRentals?: CarRental[];
+    settings?: Partial<Trip["settings"]>;
     name?: string;
     id?: string;
   },
@@ -60,6 +62,7 @@ export function trip(
     days: t.days.map((d) => day(d)),
     places: t.places,
     travelOverrides: t.travelOverrides ?? [],
+    carRentals: t.carRentals ?? [],
     settings: {
       solverStrategy: "routeFirst",
       walkSpeedKmh: 4.5,
@@ -71,6 +74,7 @@ export function trip(
       detourFactor: 1.3,
       initialBudgetMs: 50,
       editBudgetMs: 50,
+      ...(t.settings ?? {}),
     },
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",

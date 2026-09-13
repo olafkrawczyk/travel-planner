@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { haversineKm } from "@app/geo";
 import { TripSettingsSchema, parseTrip, type Trip } from "@app/domain";
-import { apiMatrixCoords, buildProblem, heuristicEntry } from "./matrix";
+import { apiMatrixCoords, buildProblem, heuristicEntry, modeCandidates } from "./matrix";
 import { BASE_A, DEG_PER_KM, day, place, trip } from "./testUtils";
 
 describe("TravelMatrix", () => {
@@ -255,6 +255,118 @@ describe("TravelMatrix", () => {
   });
 });
 
+describe("carByDay / hasAnyCar derivation in buildProblem", () => {
+  it("marks days within a rental's range (inclusive) as car days; other days unchanged", () => {
+    const a = place({ lat: 0, lng: 0, id: "a" });
+    const b = place({ lat: 0, lng: 40 * DEG_PER_KM, id: "b" }); // far enough to use transit/rail off car days
+    const t = trip({
+      places: [a, b],
+      days: [
+        day({ id: "d1", date: "2026-04-01" }),
+        day({ id: "d2", date: "2026-04-02" }),
+        day({ id: "d3", date: "2026-04-03" }),
+        day({ id: "d4", date: "2026-04-04" }),
+      ],
+      carRentals: [{ id: "rent_1", startDate: "2026-04-02", endDate: "2026-04-03" }],
+    });
+    const problem = buildProblem(t);
+    expect(problem.carByDay).toEqual([false, true, true, false]);
+    expect(problem.hasAnyCar).toBe(true);
+  });
+
+  it("no rentals and no carOnly: every day false, hasAnyCar false", () => {
+    const a = place({ lat: 0, lng: 0, id: "a" });
+    const t = trip({ places: [a], days: [day({ id: "d1" })] });
+    const problem = buildProblem(t);
+    expect(problem.carByDay).toEqual([false]);
+    expect(problem.hasAnyCar).toBe(false);
+  });
+
+  it("carOnly=true marks every day as a car day regardless of rentals", () => {
+    const a = place({ lat: 0, lng: 0, id: "a" });
+    const t = trip({
+      places: [a],
+      days: [day({ id: "d1" }), day({ id: "d2" })],
+      settings: { carOnly: true },
+    });
+    const problem = buildProblem(t);
+    expect(problem.carByDay).toEqual([true, true]);
+    expect(problem.hasAnyCar).toBe(true);
+  });
+});
+
+describe("TravelMatrix.getForDay dispatches on per-day car availability", () => {
+  it("uses the car curve on a car day and the default curve on a non-car day for the same pair", () => {
+    const a = place({ lat: 0, lng: 0, id: "a" });
+    const b = place({ lat: 0, lng: 40 * DEG_PER_KM, id: "b" }); // far: car/transit differ clearly
+    const t = trip({
+      places: [a, b],
+      days: [day({ id: "d1", date: "2026-04-01" }), day({ id: "d2", date: "2026-04-02" })],
+      carRentals: [{ id: "rent_1", startDate: "2026-04-02", endDate: "2026-04-02" }],
+    });
+    const problem = buildProblem(t);
+    const nonCarEntry = problem.matrix.getForDay("a", "b", 0);
+    const carEntry = problem.matrix.getForDay("a", "b", 1);
+    expect(nonCarEntry.mode).toBe("transit");
+    expect(carEntry.mode).toBe("car");
+    expect(carEntry.explanation).toContain("car heuristic");
+    // getForDay without a dayIdx (or an out-of-range one) falls back to default.
+    expect(problem.matrix.getForDay("a", "b").mode).toBe("transit");
+  });
+
+  it("walk still wins over car for a short hop on a car day", () => {
+    const a = place({ lat: 0, lng: 0, id: "a" });
+    const b = place({ lat: 0, lng: 0.2 * DEG_PER_KM, id: "b" }); // 0.2 km -> ~2.7 min walk vs 5.2 min drive+park
+    const t = trip({
+      places: [a, b],
+      days: [day({ id: "d1", date: "2026-04-01" })],
+      carRentals: [{ id: "rent_1", startDate: "2026-04-01", endDate: "2026-04-01" }],
+    });
+    const problem = buildProblem(t);
+    const entry = problem.matrix.getForDay("a", "b", 0);
+    expect(entry.mode).toBe("walk");
+  });
+
+  it("overrides are honoured on both car-day and non-car-day contexts", () => {
+    const a = place({ lat: 0, lng: 0, id: "a" });
+    const b = place({ lat: 0, lng: 40 * DEG_PER_KM, id: "b" });
+    const t = trip({
+      places: [a, b],
+      days: [day({ id: "d1", date: "2026-04-01" }), day({ id: "d2", date: "2026-04-02" })],
+      carRentals: [{ id: "rent_1", startDate: "2026-04-02", endDate: "2026-04-02" }],
+      travelOverrides: [{ fromId: "a", toId: "b", minutes: 77, symmetric: true }],
+    });
+    const problem = buildProblem(t);
+    expect(problem.matrix.getForDay("a", "b", 0)).toMatchObject({ minutes: 77, source: "override" });
+    expect(problem.matrix.getForDay("a", "b", 1)).toMatchObject({ minutes: 77, source: "override" });
+  });
+
+  it("get() (default, day-agnostic) keeps current non-car behaviour even when the trip has rentals", () => {
+    const a = place({ lat: 0, lng: 0, id: "a" });
+    const b = place({ lat: 0, lng: 40 * DEG_PER_KM, id: "b" });
+    const t = trip({
+      places: [a, b],
+      days: [day({ id: "d1", date: "2026-04-01" })],
+      carRentals: [{ id: "rent_1", startDate: "2026-04-01", endDate: "2026-04-01" }],
+    });
+    const problem = buildProblem(t);
+    expect(problem.matrix.get("a", "b").mode).toBe("transit");
+  });
+
+  it("carOnly=true: getForDay behaves like the whole-trip car curve on every day, without needing carByDay", () => {
+    const a = place({ lat: 0, lng: 0, id: "a" });
+    const b = place({ lat: 0, lng: 40 * DEG_PER_KM, id: "b" });
+    const t = trip({
+      places: [a, b],
+      days: [day({ id: "d1" }), day({ id: "d2" })],
+      settings: { carOnly: true },
+    });
+    const problem = buildProblem(t);
+    expect(problem.matrix.getForDay("a", "b", 0).mode).toBe("car");
+    expect(problem.matrix.getForDay("a", "b", 1).mode).toBe("car");
+  });
+});
+
 describe("heuristic travel-time model: calibration against real pairs", () => {
   // Real coordinates from apps/web/src/samples/tokyo-hakone.ts (the sample
   // trip that motivated this rework — see matrix.ts's heuristicEntry doc).
@@ -319,6 +431,61 @@ describe("heuristic travel-time model is monotonic non-decreasing in distance", 
       prevRawKm = rawKm;
     }
     expect(prevRawKm).toBe(300); // sanity: the sweep actually ran to the end
+  });
+});
+
+describe("modeCandidates candidate sets per car availability", () => {
+  const settings = TripSettingsSchema.parse({});
+
+  it("car-available day: candidate set is {car, walk} within walkMaxKm", () => {
+    const km = 0.8 * 1.3;
+    const candidates = modeCandidates(km, settings, true);
+    expect(candidates.map((c) => c.mode).sort()).toEqual(["car", "walk"]);
+    const car = candidates.find((c) => c.mode === "car")!;
+    expect(car.minutes).toBeCloseTo(km + 5, 6);
+    expect(car.explanation).toContain("car heuristic");
+  });
+
+  it("car-available day beyond walkMaxKm offers only the car curve", () => {
+    const candidates = modeCandidates(40 * 1.3, settings, true);
+    expect(candidates.map((c) => c.mode)).toEqual(["car"]);
+  });
+
+  it("non-car day candidate set is unchanged: {walk, transit, transit} within walkMaxKm", () => {
+    const candidates = modeCandidates(0.8 * 1.3, settings, false);
+    expect(candidates.map((c) => c.mode)).toEqual(["walk", "transit", "transit"]);
+    expect(candidates[1]!.explanation).toContain("urban transit heuristic");
+    expect(candidates[2]!.explanation).toContain("regional rail heuristic");
+  });
+
+  it("non-car day beyond walkMaxKm offers only the two transit curves", () => {
+    const candidates = modeCandidates(40 * 1.3, settings, false);
+    expect(candidates.map((c) => c.mode)).toEqual(["transit", "transit"]);
+  });
+
+  it("defaults carAvailable to settings.carOnly", () => {
+    expect(modeCandidates(40 * 1.3, settings).map((c) => c.mode)).toEqual(["transit", "transit"]);
+    expect(
+      modeCandidates(40 * 1.3, { ...settings, carOnly: true }).map((c) => c.mode),
+    ).toEqual(["car"]);
+  });
+});
+
+describe("heuristic travel-time model is monotonic with the car curve available", () => {
+  it("never prices a farther pair cheaper than a nearer one when the car curve is in the candidate set", () => {
+    const settings = TripSettingsSchema.parse({});
+    const a = place({ lat: 0, lng: 0, id: "a" });
+    let prevMinutes = -Infinity;
+    const rawKms: number[] = [];
+    for (let d = 0; d <= 20; d += 0.01) rawKms.push(d);
+    for (let d = 20.5; d <= 300; d += 0.5) rawKms.push(d);
+
+    for (const rawKm of rawKms) {
+      const b = place({ lat: 0, lng: rawKm * DEG_PER_KM, id: "b" });
+      const entry = heuristicEntry(a, b, settings, true);
+      expect(entry.minutes).toBeGreaterThanOrEqual(prevMinutes - 1e-9);
+      prevMinutes = entry.minutes;
+    }
   });
 });
 

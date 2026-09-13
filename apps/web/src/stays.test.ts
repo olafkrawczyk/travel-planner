@@ -37,6 +37,7 @@ function makeTrip(days: number, hotelIds: string[]): Trip {
     })),
     places: hotelIds.map(place),
     travelOverrides: [],
+    carRentals: [],
     settings: {
       carOnly: false,
       solverStrategy: "clusterFirst",

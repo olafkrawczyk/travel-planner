@@ -42,6 +42,7 @@ function makeTrip(places: Place[], dayCount: number, hotelId = "hotel"): Trip {
     days: Array.from({ length: dayCount }, (_, i) => day(`d${i}`, hotelId)),
     places: [hotel, ...places],
     travelOverrides: [],
+    carRentals: [],
     settings: {
       carOnly: false,
       solverStrategy: "clusterFirst",

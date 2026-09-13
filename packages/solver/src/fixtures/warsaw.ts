@@ -92,3 +92,19 @@ export function warsawTrip(): Trip {
 
 export const WARSAW_PLACE_COUNT = PLACES.length;
 export const WARSAW_DAY_IDS = DAY_IDS;
+
+/**
+ * Rental-covering variant of the Warsaw fixture (mixed-commute-car-rental):
+ * identical to `warsawTrip()` except a car rental covers days 3–4 (Wilanów
+ * Palace and Łazienki Park, the two most peripheral sights, sit on those
+ * days per the DAY_IDS order) — see warsaw.test.ts's rental-covering
+ * describe block for the recorded score/travel/unscheduled baselines this
+ * fixture pins.
+ */
+export function warsawTripWithRental(): Trip {
+  const base = warsawTrip();
+  return TripSchema.parse({
+    ...base,
+    carRentals: [{ id: "rent_warsaw_1", startDate: base.days[2]!.date, endDate: base.days[3]!.date }],
+  });
+}

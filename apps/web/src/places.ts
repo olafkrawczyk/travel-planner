@@ -1,22 +1,19 @@
 import type { Place, Trip } from "@app/domain";
 
 /**
- * Does `placeId` serve as a day's sleep/wake base or fixed start/end node?
+ * Does `placeId` serve as a day's sleep/wake base hotel (`baseStartId` or `baseEndId`)?
  * Checked BEFORE any delete so a base hotel is never removed while a day
  * still points at it (a dangling base makes the solver's travel matrix treat
  * the id as an unknown node — 0-minute "free" travel — and disables the API
  * matrix and stay validation for the whole trip; see PlaceEditor's onDelete).
+ * Fixed start/end locations (`startLocation`/`endLocation`) are reset to
+ * "base" automatically on deletion, so they do not block place removal.
  * Returns the first affected day (0-based index, plus its id) or null.
  */
 export function baseUsage(trip: Trip, placeId: string): { dayIndex: number; dayId: string } | null {
   for (let i = 0; i < trip.days.length; i++) {
     const day = trip.days[i]!;
-    if (
-      day.baseStartId === placeId ||
-      day.baseEndId === placeId ||
-      day.startLocation === placeId ||
-      day.endLocation === placeId
-    ) {
+    if (day.baseStartId === placeId || day.baseEndId === placeId) {
       return { dayIndex: i, dayId: day.id };
     }
   }

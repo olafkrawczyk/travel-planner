@@ -595,6 +595,198 @@ describe("deferred solving (dirty / pendingChanges / regenerate)", () => {
     expect(state.solving).toBe(false);
     expect(state.dirty).toBe(true);
   });
+
+  describe("day startLocation / endLocation (intercity-transfer-days)", () => {
+    it("mutating a day's startLocation to a fixed place updates currentTrip and marks it dirty", () => {
+      const trip = tokyoHakoneTrip();
+      const dayId = trip.days[0]!.id;
+      const placeId = trip.places[0]!.id;
+      useStore.setState({
+        currentTrip: trip,
+        itinerary: emptyItinerary,
+        past: [],
+        future: [],
+        dirty: false,
+        pendingChanges: 0,
+        solving: false,
+      });
+      tick();
+      useStore.getState().mutateTrip(
+        (draft) => {
+          const day = draft.days.find((d) => d.id === dayId)!;
+          day.startLocation = placeId;
+        },
+      );
+      const state = useStore.getState();
+      const updatedDay = state.currentTrip!.days.find((d) => d.id === dayId)!;
+      expect(updatedDay.startLocation).toBe(placeId);
+      expect(state.dirty).toBe(true);
+      expect(state.pendingChanges).toBe(1);
+    });
+
+    it("mutating a day's endLocation to a fixed place updates currentTrip and marks it dirty", () => {
+      const trip = tokyoHakoneTrip();
+      const dayId = trip.days[0]!.id;
+      const placeId = trip.places[0]!.id;
+      useStore.setState({
+        currentTrip: trip,
+        itinerary: emptyItinerary,
+        past: [],
+        future: [],
+        dirty: false,
+        pendingChanges: 0,
+        solving: false,
+      });
+      tick();
+      useStore.getState().mutateTrip(
+        (draft) => {
+          const day = draft.days.find((d) => d.id === dayId)!;
+          day.endLocation = placeId;
+        },
+      );
+      const state = useStore.getState();
+      const updatedDay = state.currentTrip!.days.find((d) => d.id === dayId)!;
+      expect(updatedDay.endLocation).toBe(placeId);
+      expect(state.dirty).toBe(true);
+      expect(state.pendingChanges).toBe(1);
+    });
+
+    it("resetting startLocation back to 'base' updates currentTrip", () => {
+      const trip = tokyoHakoneTrip();
+      const dayId = trip.days[0]!.id;
+      const placeId = trip.places[0]!.id;
+      trip.days[0]!.startLocation = placeId;
+      useStore.setState({
+        currentTrip: trip,
+        itinerary: emptyItinerary,
+        past: [],
+        future: [],
+        dirty: false,
+        pendingChanges: 0,
+        solving: false,
+      });
+      tick();
+      useStore.getState().mutateTrip(
+        (draft) => {
+          const day = draft.days.find((d) => d.id === dayId)!;
+          day.startLocation = "base";
+        },
+      );
+      const state = useStore.getState();
+      const updatedDay = state.currentTrip!.days.find((d) => d.id === dayId)!;
+      expect(updatedDay.startLocation).toBe("base");
+    });
+  });
+
+  describe("car rental store actions (mixed-commute-car-rental)", () => {
+    it("addCarRental adds a rental, updates currentTrip immediately, and triggers a full solve", () => {
+      const trip = tokyoHakoneTrip();
+      useStore.setState({
+        currentTrip: trip,
+        itinerary: emptyItinerary,
+        past: [],
+        future: [],
+        dirty: false,
+        pendingChanges: 0,
+        solving: false,
+      });
+
+      const d1 = trip.days[0]!.date;
+      const d2 = trip.days[1]!.date;
+      const err = useStore.getState().addCarRental(d1, d2);
+      expect(err).toBeNull();
+
+      const state = useStore.getState();
+      expect(state.currentTrip?.carRentals).toHaveLength(1);
+      expect(state.currentTrip?.carRentals[0]!.startDate).toBe(d1);
+      expect(state.currentTrip?.carRentals[0]!.endDate).toBe(d2);
+      // Full solve triggered
+      expect(solverClient.solve).toHaveBeenCalledTimes(1);
+      // Previous snapshot saved to past for undo
+      expect(state.past).toHaveLength(1);
+    });
+
+    it("addCarRental rejects overlapping rental and does not solve", () => {
+      const trip = tokyoHakoneTrip();
+      const d1 = trip.days[0]!.date;
+      const d2 = trip.days[1]!.date;
+      trip.carRentals = [{ id: "rent_1", startDate: d1, endDate: d2 }];
+      useStore.setState({
+        currentTrip: trip,
+        itinerary: emptyItinerary,
+        past: [],
+        future: [],
+        dirty: false,
+        solving: false,
+      });
+
+      const err = useStore.getState().addCarRental(d2, trip.days[2]!.date);
+      expect(err).toContain("overlap");
+      expect(solverClient.solve).not.toHaveBeenCalled();
+      expect(useStore.getState().currentTrip?.carRentals).toHaveLength(1);
+    });
+
+    it("updateCarRental modifies dates and triggers a full solve", () => {
+      const trip = tokyoHakoneTrip();
+      const d1 = trip.days[0]!.date;
+      const d2 = trip.days[1]!.date;
+      const d3 = trip.days[2]!.date;
+      trip.carRentals = [{ id: "rent_1", startDate: d1, endDate: d2 }];
+      useStore.setState({
+        currentTrip: trip,
+        itinerary: emptyItinerary,
+        past: [],
+        future: [],
+        dirty: false,
+        solving: false,
+      });
+
+      const err = useStore.getState().updateCarRental("rent_1", d1, d3);
+      expect(err).toBeNull();
+      expect(solverClient.solve).toHaveBeenCalledTimes(1);
+      expect(useStore.getState().currentTrip?.carRentals[0]!.endDate).toBe(d3);
+    });
+
+    it("deleteCarRental removes the rental and triggers a full solve", () => {
+      const trip = tokyoHakoneTrip();
+      trip.carRentals = [{ id: "rent_1", startDate: trip.days[0]!.date, endDate: trip.days[1]!.date }];
+      useStore.setState({
+        currentTrip: trip,
+        itinerary: emptyItinerary,
+        past: [],
+        future: [],
+        dirty: false,
+        solving: false,
+      });
+
+      useStore.getState().deleteCarRental("rent_1");
+      expect(useStore.getState().currentTrip?.carRentals).toEqual([]);
+      expect(solverClient.solve).toHaveBeenCalledTimes(1);
+    });
+
+    it("undo and redo restore car rentals", () => {
+      const trip = tokyoHakoneTrip();
+      const d1 = trip.days[0]!.date;
+      const d2 = trip.days[1]!.date;
+      useStore.setState({
+        currentTrip: trip,
+        itinerary: emptyItinerary,
+        past: [],
+        future: [],
+        dirty: false,
+        solving: false,
+      });
+
+      useStore.getState().addCarRental(d1, d2);
+      expect(useStore.getState().currentTrip?.carRentals).toHaveLength(1);
+
+      useStore.getState().undo();
+      expect(useStore.getState().currentTrip?.carRentals).toHaveLength(0);
+
+      useStore.getState().redo();
+      expect(useStore.getState().currentTrip?.carRentals).toHaveLength(1);
+    });
+  });
 });
 
 /** A repo double whose `put` always rejects — for exercising `persist`'s

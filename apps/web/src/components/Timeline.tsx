@@ -3,6 +3,9 @@ import type { DayPlan, Itinerary, Place, TravelOverride } from "@app/domain";
 import { useStore, dayColor } from "../store";
 import { UnscheduledTray } from "./UnscheduledTray";
 import { formatDuration } from "../format";
+import { isDayCarAvailable } from "../rentals";
+import { upsertTravelOverride } from "../travelOverrides";
+import { CarIcon } from "./StaysPanel";
 
 function timeToMins(t: string) {
   if (!t) return 0;
@@ -283,10 +286,11 @@ function DaySection(props: {
   const baseEnd = placeOf(places, props.baseEndId);
   const track = plan && plan.stops.length > 0 ? layoutDayTrack(plan) : null;
   const dayHidden = hiddenDays.has(day.id);
+  const hasCar = isDayCarAvailable(day, trip.carRentals ?? [], trip.settings.carOnly);
 
   return (
     <section
-      className={"day-section" + (dropActive ? " drop-active" : "")}
+      className={"day-section" + (dropActive ? " drop-active" : "") + (hasCar ? " day-has-car" : "")}
       style={{ "--day-accent": dayColor(dayIndex) } as CSSProperties}
       onDragOver={(e) => {
         e.preventDefault();
@@ -310,6 +314,15 @@ function DaySection(props: {
             {dayIndex + 1}
           </span>
           Day {dayIndex + 1} <span className="date">{date}</span>
+          {hasCar && (
+            <span
+              className="car-day-indicator"
+              title="Car available on this day"
+              aria-label="Car available"
+            >
+              <CarIcon />
+            </span>
+          )}
         </h3>
         <span className="day-times">
           <input
@@ -563,19 +576,16 @@ function DaySection(props: {
     mutateTrip(
       (draft) => {
         const ov: TravelOverride = { fromId, toId, minutes, symmetric: true };
-        draft.travelOverrides = [
-          ...(draft.travelOverrides || []).filter(
-            (o) => !((o.fromId === fromId && o.toId === toId) || (o.symmetric && o.fromId === toId && o.toId === fromId)),
-          ),
-          ov,
-        ];
+        draft.travelOverrides = upsertTravelOverride(draft.travelOverrides, ov);
       },
       { type: "full" },
     );
   }
 }
 
-/** Day settings: start/end times; bases are read-only info (stays panel is the source of truth). */
+/** Day settings: start/end times, fixed start/end locations (intercity
+ *  transfer days), and manual travel overrides; bases are read-only info
+ *  (stays panel is the source of truth). */
 function DaySettings({ dayIndex }: { dayIndex: number }) {
   const trip = useStore((s) => s.currentTrip)!;
   const mutateTrip = useStore((s) => s.mutateTrip);
@@ -608,12 +618,171 @@ function DaySettings({ dayIndex }: { dayIndex: number }) {
           }
         />
       </label>
+      <DayLocationFields dayIndex={dayIndex} />
+      <TravelOverrideForm />
       <p className="hint day-bases-info">
         Base: {baseStart?.name ?? "?"}
         {baseEnd && baseEnd.id !== baseStart?.id ? ` → ${baseEnd.name}` : ""}
         {" · edit in Stays"}
       </p>
     </div>
+  );
+}
+
+/**
+ * Per-day fixed start/end location pickers (intercity transfer days): a day
+ * defaults to starting/ending at its base hotel, but either bound can be
+ * pinned to any place — e.g. an airport, a rail terminus, or the previous
+ * city's hotel — so a long-haul travel day can be declared explicitly
+ * instead of left to the solver's distance heuristic.
+ */
+function DayLocationFields({ dayIndex }: { dayIndex: number }) {
+  const trip = useStore((s) => s.currentTrip)!;
+  const mutateTrip = useStore((s) => s.mutateTrip);
+  const day = trip.days[dayIndex]!;
+  const options: { value: string; label: string }[] = [
+    { value: "base", label: "Base" },
+    ...trip.places.map((p) => ({ value: p.id, label: p.name })),
+  ];
+  return (
+    <>
+      <label>
+        Starts from
+        <select
+          value={day.startLocation}
+          aria-label="Start location"
+          title="Where this day starts: the base hotel, or a fixed place (e.g. an airport or station) for an intercity transfer day"
+          onChange={(e) =>
+            mutateTrip((draft) => {
+              draft.days[dayIndex]!.startLocation = e.target.value;
+            })
+          }
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Ends at
+        <select
+          value={day.endLocation}
+          aria-label="End location"
+          title="Where this day ends: the base hotel, or a fixed place (e.g. an airport or station) for an intercity transfer day"
+          onChange={(e) =>
+            mutateTrip((draft) => {
+              draft.days[dayIndex]!.endLocation = e.target.value;
+            })
+          }
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    </>
+  );
+}
+
+/**
+ * Affordance to add a manual travel-time override between any two places
+ * in the trip (intercity transfers): allows declaring explicit duration for
+ * long-haul connections (e.g. airport to airport, or hotel to hotel) so the
+ * solver respects them without heuristic breakdown.
+ */
+function TravelOverrideForm() {
+  const trip = useStore((s) => s.currentTrip)!;
+  const mutateTrip = useStore((s) => s.mutateTrip);
+  const places = trip.places;
+
+  const [fromId, setFromId] = useState(places[0]?.id ?? "");
+  const [toId, setToId] = useState(places[1]?.id ?? places[0]?.id ?? "");
+  const [minutes, setMinutes] = useState("120");
+  const [symmetric, setSymmetric] = useState(true);
+
+  if (places.length < 2) return null;
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!fromId || !toId || fromId === toId) return;
+    const mins = Math.max(0, Math.round(Number(minutes)) || 0);
+    mutateTrip(
+      (draft) => {
+        const ov: TravelOverride = {
+          fromId,
+          toId,
+          minutes: mins,
+          symmetric,
+        };
+        draft.travelOverrides = upsertTravelOverride(draft.travelOverrides, ov);
+      },
+      { type: "full" },
+    );
+  }
+
+  return (
+    <form className="day-override-form" onSubmit={handleSubmit}>
+      <span className="override-form-title hint">Add travel override:</span>
+      <label>
+        From
+        <select
+          value={fromId}
+          aria-label="Override from place"
+          onChange={(e) => setFromId(e.target.value)}
+        >
+          {places.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        To
+        <select
+          value={toId}
+          aria-label="Override to place"
+          onChange={(e) => setToId(e.target.value)}
+        >
+          {places.map((p) => (
+            <option key={p.id} value={p.id} disabled={p.id === fromId}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Minutes
+        <input
+          type="number"
+          min={0}
+          max={1440}
+          value={minutes}
+          aria-label="Override duration in minutes"
+          onChange={(e) => setMinutes(e.target.value)}
+        />
+      </label>
+      <label className="override-symmetric-label">
+        <input
+          type="checkbox"
+          checked={symmetric}
+          aria-label="Symmetric override"
+          onChange={(e) => setSymmetric(e.target.checked)}
+        />
+        Both directions
+      </label>
+      <button
+        type="submit"
+        className="btn-add-override"
+        disabled={!fromId || !toId || fromId === toId}
+      >
+        Set override
+      </button>
+    </form>
   );
 }
 
@@ -670,6 +839,7 @@ function LegRow({
           {Math.round(leg.minutes)} min {leg.mode}
         </button>
       )}
+      {leg.mode === "car" && <span className="badge badge-info leg-car-badge"><CarIcon /> car</span>}
       {sourceLabel && (
         <span className={"badge " + (leg.source === "override" ? "badge-success" : "badge-info")}>{sourceLabel}</span>
       )}

@@ -135,9 +135,11 @@ export function computeTimes(
   let t = dayStart;
   let prevNode = startNode;
 
+  const dayIdx = problem.dayList.findIndex((d) => d.id === day.id);
+
   for (const placeId of order) {
     const place = problem.placesById.get(placeId)!;
-    const m = problem.matrix.get(prevNode, placeId);
+    const m = problem.matrix.getForDay(prevNode, placeId, dayIdx);
     const arriveAbs = t + m.minutes;
     travelMin += m.minutes;
     const fit = feasibleVisit(place, day, arriveAbs, ignoreWindows);
@@ -165,7 +167,7 @@ export function computeTimes(
   }
 
   if (order.length > 0) {
-    const m = problem.matrix.get(prevNode, endNode);
+    const m = problem.matrix.getForDay(prevNode, endNode, dayIdx);
     travelMin += m.minutes;
     legs.push({ fromId: prevNode, toId: endNode, minutes: m.minutes, mode: m.mode, source: m.source, explanation: m.explanation });
     t += m.minutes;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { solve } from "./solve";
 import { evaluate } from "./alns";
 import { buildProblem } from "./matrix";
-import { WARSAW_PLACE_COUNT, warsawTrip } from "./fixtures/warsaw";
+import { WARSAW_PLACE_COUNT, warsawTrip, warsawTripWithRental } from "./fixtures/warsaw";
 
 /**
  * Regression guard on the Warsaw fixture (22 curated places + Hotel Bristol
@@ -145,5 +145,45 @@ describe("warsaw fixture regression", () => {
     };
     const ev = evaluate(problem, state);
     expect(ev.utilisationSpread).toBeLessThan(0.15);
+  });
+
+  /**
+   * Rental-covering variant (mixed-commute-car-rental): a car rental covers
+   * days 3–4 (`warsawTripWithRental` in fixtures/warsaw.ts). Baselines below
+   * are recorded from the deterministic solve at seed 42 — travel drops
+   * substantially versus the no-rental baseline above (405.4 -> 301.1) since
+   * the two most peripheral sights (Wilanów Palace, Łazienki Park) fall on
+   * car days and are reached via the faster car curve instead of urban
+   * transit; score drops correspondingly (477.2 -> 379.6).
+   */
+  const RENTAL_BASELINES = {
+    score: 379.6,
+    totalTravelMin: 301.1,
+    unscheduledCount: 0,
+  };
+
+  describe("rental-covering variant regression (days 3–4 car rental)", () => {
+    const rentalTrip = warsawTripWithRental();
+
+    it("matches recorded score / travel / unscheduled baselines", () => {
+      const itin = solve({ trip: rentalTrip, seed: 42, maxIterations: 1000, budgetMs: 60_000 });
+      expect(itin.stats.score).toBe(RENTAL_BASELINES.score);
+      expect(itin.stats.totalTravelMin).toBe(RENTAL_BASELINES.totalTravelMin);
+      expect(itin.unscheduled).toHaveLength(RENTAL_BASELINES.unscheduledCount);
+    });
+
+    it("is deterministic for the same seed and input", () => {
+      const a = solve({ trip: warsawTripWithRental(), seed: 42, maxIterations: 1000, budgetMs: 60_000 });
+      const b = solve({ trip: warsawTripWithRental(), seed: 42, maxIterations: 1000, budgetMs: 60_000 });
+      expect(a).toEqual(b);
+    });
+
+    it("legs on the car-covered days (3–4) use the car mode; days 1–2 do not", () => {
+      const itin = solve({ trip: rentalTrip, seed: 42, maxIterations: 1000, budgetMs: 60_000 });
+      const carDayLegs = [...itin.days[2]!.legs, ...itin.days[3]!.legs];
+      const nonCarDayLegs = [...itin.days[0]!.legs, ...itin.days[1]!.legs];
+      expect(carDayLegs.some((l) => l.mode === "car")).toBe(true);
+      expect(nonCarDayLegs.some((l) => l.mode === "car")).toBe(false);
+    });
   });
 });

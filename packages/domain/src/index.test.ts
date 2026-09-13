@@ -95,6 +95,34 @@ describe("trip schema", () => {
     expect(trip.places[0]).not.toHaveProperty("timeWindows");
   });
 
+  it("defaults carRentals to [] and parses valid rentals", () => {
+    const trip = TripSchema.parse(sampleTrip);
+    expect(trip.carRentals).toEqual([]);
+
+    const withRental = {
+      ...JSON.parse(JSON.stringify(sampleTrip)),
+      carRentals: [{ id: "rent_1", startDate: "2026-04-01", endDate: "2026-04-02" }],
+    };
+    const parsed = TripSchema.parse(withRental);
+    expect(parsed.carRentals).toEqual([{ id: "rent_1", startDate: "2026-04-01", endDate: "2026-04-02" }]);
+  });
+
+  it("rejects a rental whose end date precedes its start date", () => {
+    const bad = {
+      ...JSON.parse(JSON.stringify(sampleTrip)),
+      carRentals: [{ id: "rent_1", startDate: "2026-04-03", endDate: "2026-04-02" }],
+    };
+    expect(() => TripSchema.parse(bad)).toThrow();
+  });
+
+  it("parseTrip migrates v3 → v4: seeds carRentals: []", () => {
+    const v3 = JSON.parse(JSON.stringify(sampleTrip));
+    v3.schemaVersion = 3;
+    const trip = parseTrip(v3);
+    expect(trip.schemaVersion).toBe(schemaVersion);
+    expect(trip.carRentals).toEqual([]);
+  });
+
   it("parses v2 openingHours as a per-date window map", () => {
     const v2 = JSON.parse(JSON.stringify(sampleTrip));
     v2.places[0].openingHours = { "2026-04-01": [{ start: "09:00", end: "17:00" }] };

@@ -295,8 +295,8 @@ function ruin(
         const prev = s.pos > 0 ? list[s.pos - 1]! : entryNode(problem, s.dayIdx);
         const next = s.pos < list.length - 1 ? list[s.pos + 1]! : exitNode(problem, s.dayIdx);
         const withIt =
-          problem.matrix.minutes(prev, s.id) + problem.matrix.minutes(s.id, next);
-        const withoutIt = problem.matrix.minutes(prev, next);
+          problem.matrix.minutesForDay(prev, s.id, s.dayIdx) + problem.matrix.minutesForDay(s.id, next, s.dayIdx);
+        const withoutIt = problem.matrix.minutesForDay(prev, next, s.dayIdx);
         return { ...s, saving: withIt - withoutIt };
       })
       .sort((a, b) => b.saving - a.saving);

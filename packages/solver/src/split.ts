@@ -54,7 +54,7 @@ export function split(problem: Problem, tour: string[]): SplitResult {
       for (let j = i; j <= N; j++) {
         if (j > i) {
           const p = placeOf.get(tour[j - 1]!)!;
-          const m = problem.matrix.minutes(prev, tour[j - 1]!);
+          const m = problem.matrix.minutesForDay(prev, tour[j - 1]!, d);
           travel += m;
           t += m;
           if (p.appointment) {
@@ -69,7 +69,7 @@ export function split(problem: Problem, tour: string[]): SplitResult {
           dwell += p.dwellMin;
           t += p.dwellMin;
           prev = tour[j - 1]!;
-          const back = problem.matrix.minutes(prev, endNode);
+          const back = problem.matrix.minutesForDay(prev, endNode, d);
           const endMin = t + back;
           const overrun = Math.max(0, endMin - dayEnd);
           grid[i]![j] =
