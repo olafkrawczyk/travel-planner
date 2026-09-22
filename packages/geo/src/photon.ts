@@ -97,7 +97,7 @@ export class PhotonClient {
     this.lang = opts.lang ?? "en";
     this.appName = opts.appName ?? "travel-planner";
     this.contactEmail = opts.contactEmail;
-    this.fetchFn = opts.fetchFn ?? fetch;
+    this.fetchFn = opts.fetchFn ?? ((url, init) => fetch(url, init));
   }
 
   /** Debounced search: resolves with cached results immediately when available. */

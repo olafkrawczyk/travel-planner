@@ -63,7 +63,7 @@ export class OsrmClient {
     this.baseUrl = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
     this.profile = opts.profile ?? DEFAULT_PROFILE;
     this.maxNodes = opts.maxNodes ?? DEFAULT_MAX_NODES;
-    this.fetchFn = opts.fetchFn ?? fetch;
+    this.fetchFn = opts.fetchFn ?? ((url, init) => fetch(url, init));
   }
 
   /**
@@ -100,6 +100,40 @@ export class OsrmClient {
       throw new OsrmError("malformed", "OSRM response is not valid JSON", { cause: err });
     }
     return parseDurations(json, coords.length);
+  }
+
+  /**
+   * Fetch the road geometry of a single route (MapLibre polyline source) for
+   * the given coordinates, honouring this client's configured base URL and
+   * profile. Returns null on any failure (offline, HTTP error, malformed
+   * response) — callers fall back to diagram geometry rather than treating
+   * a missing road polyline as an error.
+   */
+  async fetchRoute(coords: LatLng[]): Promise<[number, number][] | null> {
+    if (coords.length < 2) return null;
+    const coordStr = coords.map((c) => `${c.lng},${c.lat}`).join(";");
+    const url = `${this.baseUrl}/route/v1/${this.profile}/${coordStr}?overview=full&geometries=geojson`;
+
+    let res: Response;
+    try {
+      res = await this.fetchFn(url);
+    } catch {
+      return null;
+    }
+    if (!res.ok) return null;
+
+    try {
+      const data = (await res.json()) as {
+        code?: string;
+        routes?: { geometry?: { coordinates?: [number, number][] } }[];
+      };
+      if (data.code === "Ok" && data.routes?.[0]?.geometry?.coordinates) {
+        return data.routes[0].geometry.coordinates;
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
 }
 

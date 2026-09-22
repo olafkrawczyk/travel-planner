@@ -132,7 +132,7 @@ export class OverpassClient {
 
   constructor(opts: OverpassClientOptions = {}) {
     this.baseUrl = (opts.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, "");
-    this.fetchFn = opts.fetchFn ?? fetch;
+    this.fetchFn = opts.fetchFn ?? ((url, init) => fetch(url, init));
   }
 
   /**
